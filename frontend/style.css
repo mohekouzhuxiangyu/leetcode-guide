@@ -447,9 +447,10 @@ html { overflow-y: scroll; }
 }
 .code-copy:hover { background: #475569; }
 
-/* 滚动条 */
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+/* 滚动条：细一点、颜色淡一点 */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.35); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.6); }
 ::-webkit-scrollbar-track { background: transparent; }
 
 @media (max-width: 860px) {
