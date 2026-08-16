@@ -825,7 +825,7 @@ function renderProblemTab(problem, record) {
     html += `<div class="problem-empty">（未获取到题目原文，请查看算法解析或<a href="${escapeHtml(problem.url || record.url || "#")}" target="_blank">原题链接</a>）</div>`;
   }
   if (Object.keys(snippets).length) {
-    html += `<h3 class="sec-title">🧩 LeetCode 函数模板</h3>`;
+    html += `<h3 class="sec-title">🧩 LeetCode 函数模板 <span class="sec-hint">— 提交代码时使用的函数签名（直接从 LeetCode 获取，可对照「代码」标签页的实现）</span></h3>`;
     for (const [lang, code] of Object.entries(snippets)) {
       html += `<div class="code-block"><pre><code class="language-${LANG_ALIAS[lang]?.hl || "text"}">${escapeHtml(code)}</code></pre></div>`;
     }
@@ -1661,15 +1661,21 @@ function init() {
     try { marked.setOptions({ breaks: true, gfm: true }); } catch (e) {}
   }
 
-  // 主题：暗夜/白日（本地持久化）
+  // 主题：暗夜/白日（切换时直接替换主题 CSS 文件）
+  function applyThemeFile(theme) {
+    const link = $("theme-css");
+    if (link) link.href = "/assets/theme-" + theme + ".css?v=1";
+  }
   const savedTheme = localStorage.getItem("lc_theme") || "dark";
   document.documentElement.dataset.theme = savedTheme;
+  applyThemeFile(savedTheme);
   $("btn-theme").textContent = savedTheme === "dark" ? "🌙" : "☀️";
   $("btn-theme").addEventListener("click", () => {
     const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
     document.documentElement.dataset.theme = next;
     localStorage.setItem("lc_theme", next);
     $("btn-theme").textContent = next === "dark" ? "🌙" : "☀️";
+    applyThemeFile(next);
   });
 
   $("btn-generate").addEventListener("click", () => {

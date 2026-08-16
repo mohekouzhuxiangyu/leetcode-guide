@@ -1,0 +1,22 @@
+/* ============================================================
+   暗夜主题（默认）：主题变量与暗色组件配色
+   由 index.html 的 #theme-css 引入，切换主题时替换为 theme-light.css
+   ============================================================ */
+:root {
+  --bg: #0f172a;
+  --bg-sidebar: #111c34;
+  --bg-panel: #1e293b;
+  --bg-input: #0b1220;
+  --border: #334155;
+  --text: #e2e8f0;
+  --text-dim: #94a3b8;
+  --accent: #4f8cff;
+  --accent-hover: #6ba1ff;
+  --green: #34d399;
+  --yellow: #fbbf24;
+  --red: #f87171;
+  --radius: 12px;
+  --btn-secondary-bg: #334155;
+  --btn-secondary-text: #e2e8f0;
+  --btn-secondary-hover: #475569;
+}

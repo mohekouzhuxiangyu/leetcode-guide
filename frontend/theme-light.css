@@ -1,0 +1,72 @@
+/* ============================================================
+   白日主题：主题变量 + 亮色组件覆盖
+   由 index.html 的 #theme-css 引入，切换主题时替换为 theme-dark.css
+   ============================================================ */
+:root {
+  --bg: #f1f5f9;
+  --bg-sidebar: #e2e8f0;
+  --bg-panel: #ffffff;
+  --bg-input: #f8fafc;
+  --border: #cbd5e1;
+  --text: #0f172a;
+  --text-dim: #64748b;
+  --accent: #2563eb;
+  --accent-hover: #3b82f6;
+  --green: #16a34a;
+  --yellow: #d97706;
+  --red: #dc2626;
+  --radius: 12px;
+  --btn-secondary-bg: #cbd5e1;
+  --btn-secondary-text: #1e293b;
+  --btn-secondary-hover: #94a3b8;
+}
+
+/* ---- 亮色组件覆盖（只在本文件加载时生效） ---- */
+.wt-cell { background: #e2e8f0; border-color: #cbd5e1; }
+.wt-map th { background: #e2e8f0; }
+.wt-cell.hl { background: rgba(220, 38, 38, 0.18); }
+.code-copy, .btn-small { background: #e2e8f0; color: #334155; }
+.code-copy:hover, .btn-small:hover { background: #cbd5e1; }
+.mermaid-container { background: #ffffff; }
+.progress-spinner { border-color: #cbd5e1; border-top-color: var(--accent); }
+.cat-chip { background: #ffffff; }
+.h-diff, .badge { color: #fff; }
+.wt-note { background: rgba(22, 163, 74, 0.08); }
+
+/* 模板代码区固定深底浅字 */
+.tpl-card pre { background: #0d1117 !important; border-color: #30363d; }
+.tpl-card pre code { color: #e6edf3 !important; }
+.tpl-card pre code.hljs { background: transparent !important; color: inherit !important; }
+#tab-template .code-block pre { background: #0d1117 !important; }
+#tab-template .code-block pre code { color: #e6edf3 !important; }
+#tab-template .code-block pre code.hljs { background: transparent !important; color: inherit !important; }
+
+/* 难度筛选 chips：非选中态用深色文字 */
+.cat-chip.diff-Easy   { color: #15803d; border-color: rgba(22, 163, 74, 0.55); }
+.cat-chip.diff-Medium { color: #b45309; border-color: rgba(217, 119, 6, 0.55); }
+.cat-chip.diff-Hard   { color: #b91c1c; border-color: rgba(220, 38, 38, 0.55); }
+.cat-chip.diff-Easy:hover   { background: rgba(22, 163, 74, 0.10); }
+.cat-chip.diff-Medium:hover { background: rgba(217, 119, 6, 0.10); }
+.cat-chip.diff-Hard:hover   { background: rgba(220, 38, 38, 0.10); }
+
+/* 主按钮与强调按钮：所有状态保持白字 */
+.btn-primary, .btn-primary:hover, .btn-primary:active, .btn-primary:focus { color: #fff; }
+.btn-start, .btn-start:hover, .btn-stop, .btn-stop:hover { color: #fff; }
+.btn-small:hover, .code-copy:hover { background: #cbd5e1; color: #334155; }
+
+/* 侧栏杂项控件 */
+.btn-mini { color: var(--text-dim); border-color: var(--border); }
+.ua-action { color: var(--accent); }
+.btn-theme { color: var(--text-dim); }
+.h-del { color: var(--text-dim); }
+.history-group { color: #1d4ed8; }
+
+/* chips 选中态恢复彩色底白字 */
+.cat-chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.cat-chip.diff-Easy.active   { background: #16a34a; border-color: #16a34a; color: #fff; }
+.cat-chip.diff-Medium.active { background: #d97706; border-color: #d97706; color: #fff; }
+.cat-chip.diff-Hard.active   { background: #dc2626; border-color: #dc2626; color: #fff; }
+
+/* 批量开始/停止按钮保持绿/红底白字 */
+.btn-small.btn-start, .btn-small.btn-start:hover { background: #16a34a; color: #fff; }
+.btn-small.btn-stop, .btn-small.btn-stop:hover { background: #b91c1c; color: #fff; }

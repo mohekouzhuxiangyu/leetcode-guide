@@ -1,19 +1,3 @@
-:root {
-  --bg: #0f172a;
-  --bg-sidebar: #111c34;
-  --bg-panel: #1e293b;
-  --bg-input: #0b1220;
-  --border: #334155;
-  --text: #e2e8f0;
-  --text-dim: #94a3b8;
-  --accent: #4f8cff;
-  --accent-hover: #6ba1ff;
-  --green: #34d399;
-  --yellow: #fbbf24;
-  --red: #f87171;
-  --radius: 12px;
-}
-
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
@@ -874,35 +858,6 @@ mark {
 }
 .toast.toast-error { background: #b91c1c; }
 
-/* ---------- 白天主题（默认暗夜，html[data-theme="light"] 切换） ---------- */
-[data-theme="light"] {
-  --bg: #f1f5f9;
-  --bg-sidebar: #e2e8f0;
-  --bg-panel: #ffffff;
-  --bg-input: #f8fafc;
-  --border: #cbd5e1;
-  --text: #0f172a;
-  --text-dim: #64748b;
-  --accent: #2563eb;
-  --accent-hover: #3b82f6;
-  --green: #16a34a;
-  --yellow: #d97706;
-  --red: #dc2626;
-  --btn-secondary-bg: #cbd5e1;
-  --btn-secondary-text: #1e293b;
-  --btn-secondary-hover: #94a3b8;
-}
-[data-theme="light"] .wt-cell { background: #e2e8f0; border-color: #cbd5e1; }
-[data-theme="light"] .wt-map th { background: #e2e8f0; }
-[data-theme="light"] .wt-cell.hl { background: rgba(220, 38, 38, 0.18); }
-[data-theme="light"] .code-copy, [data-theme="light"] .btn-small { background: #e2e8f0; color: #334155; }
-[data-theme="light"] .code-copy:hover, [data-theme="light"] .btn-small:hover { background: #cbd5e1; }
-[data-theme="light"] .mermaid-container { background: #ffffff; }
-[data-theme="light"] .progress-spinner { border-color: #cbd5e1; border-top-color: var(--accent); }
-[data-theme="light"] .cat-chip { background: #ffffff; }
-[data-theme="light"] .h-diff, [data-theme="light"] .badge { color: #fff; }
-[data-theme="light"] .wt-note { background: rgba(22, 163, 74, 0.08); }
-
 /* 主题切换按钮 */
 .btn-theme {
   margin-left: auto;
@@ -1045,59 +1000,6 @@ mark {
 .group-hint { margin-top: 10px; font-size: 12px; }
 .group-hint span { color: var(--accent-hover); font-weight: 600; }
 
-/* 模板库代码区：白天模式强制深底浅字（防止被主题/旧缓存覆盖） */
-[data-theme="light"] .tpl-card pre { background: #0d1117 !important; border-color: #30363d; }
-[data-theme="light"] .tpl-card pre code { color: #e6edf3 !important; }
-[data-theme="light"] .tpl-card pre code.hljs { background: transparent !important; color: inherit !important; }
-[data-theme="light"] #tab-template .code-block pre { background: #0d1117 !important; }
-[data-theme="light"] #tab-template .code-block pre code { color: #e6edf3 !important; }
-[data-theme="light"] #tab-template .code-block pre code.hljs { background: transparent !important; color: inherit !important; }
-
-/* ---------- 白天模式全面对比度修正 ---------- */
-/* 难度筛选 chips：非选中态用深色文字（浅色版本在白底上看不清） */
-[data-theme="light"] .cat-chip.diff-Easy   { color: #15803d; border-color: rgba(22, 163, 74, 0.55); }
-[data-theme="light"] .cat-chip.diff-Medium { color: #b45309; border-color: rgba(217, 119, 6, 0.55); }
-[data-theme="light"] .cat-chip.diff-Hard   { color: #b91c1c; border-color: rgba(220, 38, 38, 0.55); }
-[data-theme="light"] .cat-chip.diff-Easy:hover   { background: rgba(22, 163, 74, 0.10); }
-[data-theme="light"] .cat-chip.diff-Medium:hover { background: rgba(217, 119, 6, 0.10); }
-[data-theme="light"] .cat-chip.diff-Hard:hover   { background: rgba(220, 38, 38, 0.10); }
-
-/* 主按钮：所有状态（含点击/聚焦）保持白字，避免文字与背景同色 */
-[data-theme="light"] .btn-primary,
-[data-theme="light"] .btn-primary:hover,
-[data-theme="light"] .btn-primary:active,
-[data-theme="light"] .btn-primary:focus { color: #fff; }
-
-/* 绿色/红色强调按钮与悬停态：保持白字 */
-[data-theme="light"] .btn-start,
-[data-theme="light"] .btn-start:hover,
-[data-theme="light"] .btn-stop,
-[data-theme="light"] .btn-stop:hover { color: #fff; }
-
-/* 次要小按钮 hover 不再变深底（深底深字问题） */
-[data-theme="light"] .btn-small:hover,
-[data-theme="light"] .code-copy:hover { background: #cbd5e1; color: #334155; }
-
-/* 侧栏杂项控件在白天模式下的文字颜色明确化 */
-[data-theme="light"] .btn-mini { color: var(--text-dim); border-color: var(--border); }
-[data-theme="light"] .ua-action { color: var(--accent); }
-[data-theme="light"] .btn-theme { color: var(--text-dim); }
-[data-theme="light"] .h-del { color: var(--text-dim); }
-[data-theme="light"] .history-group { color: #1d4ed8; }
-
-/* ========== 修复：白天模式点击后白底白字（light 通用规则覆盖了 active 态） ========== */
-/* 分类/分组/难度 chips 点击选中后：恢复彩色底 + 白字 */
-[data-theme="light"] .cat-chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
-[data-theme="light"] .cat-chip.diff-Easy.active   { background: #16a34a; border-color: #16a34a; color: #fff; }
-[data-theme="light"] .cat-chip.diff-Medium.active { background: #d97706; border-color: #d97706; color: #fff; }
-[data-theme="light"] .cat-chip.diff-Hard.active   { background: #dc2626; border-color: #dc2626; color: #fff; }
-
-/* 批量「开始/停止」按钮：不被 .btn-small 通用浅色规则覆盖（保持绿/红底白字） */
-[data-theme="light"] .btn-small.btn-start,
-[data-theme="light"] .btn-small.btn-start:hover { background: #16a34a; color: #fff; }
-[data-theme="light"] .btn-small.btn-stop,
-[data-theme="light"] .btn-small.btn-stop:hover { background: #b91c1c; color: #fff; }
-
 /* ---------- 顶栏（用户区右上角） ---------- */
 .topbar {
   display: flex;
@@ -1141,3 +1043,6 @@ mark {
   font-variant-numeric: tabular-nums;
 }
 .mz-stage svg { display: block; margin: 0 auto; }
+
+/* 小节标题内的说明文字 */
+.sec-hint { font-size: 12px; font-weight: 400; color: var(--text-dim); }
