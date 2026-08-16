@@ -169,10 +169,10 @@ function isVip() {
   return new Date(auth.user.vip_expires_at) > new Date();
 }
 
-/* VIP 权限门控：未登录弹登录，未开通弹购买 */
+/* VIP 权限门控：未登录弹登录，未开通弹捐款支持 */
 function requireVip() {
   if (!auth.user) { showLoginModal(); return false; }
-  if (!isVip()) { showVipModal(); return false; }
+  if (!isVip()) { showDonateModal(); return false; }
   return true;
 }
 
@@ -183,10 +183,11 @@ function renderUserArea() {
     if (auth.user) {
       const vipHtml = isVip()
         ? `<span class="vip-badge" title="VIP 有效期至 ${escapeHtml(auth.user.vip_expires_at || "永久")}">👑 VIP</span>`
-        : `<button class="ua-action vip-buy" id="ua-vip">开通 VIP</button>`;
+        : `<button class="ua-action vip-buy" id="ua-vip">💖 支持</button>`;
+      const adminHtml = auth.user.is_admin ? `<button class="ua-action" id="ua-admin">👑 管理</button>` : "";
       el.innerHTML = `<div class="ua-inner">
         <span class="ua-name">👤 ${escapeHtml(auth.user.username)} ${vipHtml}</span>
-        <button class="ua-action" id="ua-logout">退出</button>
+        <span>${adminHtml}<button class="ua-action" id="ua-logout">退出</button></span>
       </div>`;
     } else {
       el.innerHTML = `<div class="ua-inner">
@@ -200,106 +201,86 @@ function renderUserArea() {
   document.querySelectorAll(".ua-login").forEach((b) => b.addEventListener("click", showLoginModal));
   document.querySelectorAll(".ua-register").forEach((b) => b.addEventListener("click", showRegisterModal));
   document.querySelectorAll(".ua-logout").forEach((b) => b.addEventListener("click", logoutUser));
-  document.querySelectorAll(".ua-vip").forEach((b) => b.addEventListener("click", showVipModal));
+  document.querySelectorAll(".ua-vip").forEach((b) => b.addEventListener("click", showDonateModal));
+  document.querySelectorAll(".ua-admin").forEach((b) => b.addEventListener("click", showGrantModal));
 }
 
-/* 开通 VIP（支付宝：电脑支付 / 扫码支付） */
-async function showVipModal() {
-  let plans = {};
-  try {
-    const resp = await fetch("/api/vip/plans");
-    plans = (await resp.json()).plans || {};
-  } catch { /* 忽略 */ }
-  let body = `<div class="modal-msg">开通 VIP 后解锁全部功能：新增题目、批量生成、删除/编辑题目、分组管理。</div>
-    <div class="vip-plans">`;
-  for (const [key, p] of Object.entries(plans)) {
-    body += `<div class="vip-plan" data-plan="${escapeHtml(key)}">
-      <div class="vip-plan-name">${escapeHtml(p.name)}</div>
-      <div class="vip-plan-amount">¥${escapeHtml(p.amount)}</div>
-      <div class="vip-plan-desc">${escapeHtml(p.desc)}</div>
-    </div>`;
+/* 💖 自愿捐款（微信/支付宝收款码 + 固定/自定义金额） */
+function showDonateModal() {
+  const amounts = [6.66, 9.9, 18.8, 66];
+  let body = `<div class="modal-msg">本应用为免费学习工具，欢迎自愿打赏支持开发 💖</div>
+    <div class="donate-amounts">
+      ${amounts.map((a) => `<button class="donate-amt" data-amt="${a}">¥${a}</button>`).join("")}
+      <input class="donate-custom" id="donate-custom" type="number" min="0.01" step="0.01" placeholder="自定义金额 ¥" />
+    </div>
+    <div class="donate-qrs">
+      <div class="donate-qr">
+        <div class="donate-qr-title">💚 微信收款</div>
+        <img id="qr-wechat" src="/assets/qrcodes/wechat.png" alt="微信收款码"
+             onerror="qrOnError(this,'/assets/qrcodes/wechat')" />
+        <div class="donate-qr-missing hidden" id="qr-wechat-missing">管理员尚未上传收款码</div>
+      </div>
+      <div class="donate-qr">
+        <div class="donate-qr-title">💙 支付宝收款</div>
+        <img id="qr-alipay" src="/assets/qrcodes/alipay.png" alt="支付宝收款码"
+             onerror="qrOnError(this,'/assets/qrcodes/alipay')" />
+        <div class="donate-qr-missing hidden" id="qr-alipay-missing">管理员尚未上传收款码</div>
+      </div>
+    </div>
+    <div class="modal-msg donate-tip">💡 请使用微信/支付宝 App 扫码，打赏任意金额即可；
+      如需解锁 VIP 功能，请在打赏备注中写明你的用户名，并联系管理员开通。</div>`;
+  openModal("💖 自愿捐款", body, `<button class="btn btn-small" id="modal-cancel">关闭</button>`);
+  $("modal-cancel").addEventListener("click", closeModal);
+  document.querySelectorAll(".donate-amt").forEach((b) => {
+    b.addEventListener("click", () => {
+      document.querySelectorAll(".donate-amt").forEach((x) => x.classList.toggle("active", x === b));
+    });
+  });
+}
+
+/* 收款码图片加载失败时降级：尝试 .jpg，仍失败则隐藏并提示 */
+function qrOnError(el, base) {
+  if (el.src.indexOf(".jpg") === -1) {
+    el.src = base + ".jpg";
+  } else {
+    el.style.display = "none";
+    const m = document.getElementById(el.id + "-missing");
+    if (m) m.classList.remove("hidden");
   }
-  body += `</div>
-    <div class="vip-pay-ways">
-      <button class="btn btn-small" id="vip-pay-page">💻 电脑支付</button>
-      <button class="btn btn-small btn-start" id="vip-pay-qr">📱 扫码支付</button>
-    </div>`;
+}
+
+/* 👑 VIP 管理（仅管理员）：按邮箱为捐款用户开通 VIP */
+function showGrantModal() {
   openModal(
-    "开通 VIP",
-    body,
-    `<button class="btn btn-small" id="modal-cancel">取消</button>`
-  );
-  let selected = Object.keys(plans)[0];
-  const cards = document.querySelectorAll(".vip-plan");
-  cards.forEach((c) => c.classList.toggle("active", c.dataset.plan === selected));
-  cards.forEach((c) =>
-    c.addEventListener("click", () => {
-      selected = c.dataset.plan;
-      cards.forEach((x) => x.classList.toggle("active", x === c));
-    })
+    "VIP 管理（为捐款用户开通）",
+    `<div class="modal-form">
+       <label class="modal-label">用户邮箱</label>
+       <input id="grant-email" class="modal-input" type="email" spellcheck="false" placeholder="donor@example.com" />
+       <label class="modal-label">开通天数</label>
+       <input id="grant-days" class="modal-input" type="number" value="30" min="1" step="1" />
+     </div>`,
+    `<button class="btn btn-small" id="modal-cancel">取消</button>
+     <button class="btn btn-primary btn-small" id="modal-ok">开通 VIP</button>`
   );
   $("modal-cancel").addEventListener("click", closeModal);
-  $("vip-pay-page").addEventListener("click", () => doVipPay(selected, "page"));
-  $("vip-pay-qr").addEventListener("click", () => doVipPay(selected, "qr"));
-}
-
-async function doVipPay(plan, method) {
-  try {
-    const resp = await apiFetch("/api/vip/order", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ plan, method }),
-    });
-    const data = await resp.json();
-    if (!resp.ok) { modalError(data.detail || "下单失败"); return; }
-    if (method === "qr") {
+  $("modal-ok").addEventListener("click", async () => {
+    const email = $("grant-email").value.trim();
+    const days = parseInt($("grant-days").value, 10) || 30;
+    if (!email) { modalError("请输入用户邮箱"); return; }
+    try {
+      const resp = await apiFetch("/api/vip/grant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, days }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) { modalError(data.detail || "操作失败"); return; }
       closeModal();
-      showQrPayModal(data);
-    } else {
-      window.location.href = data.pay_url;
+      toast(`已为 ${email} 开通 ${days} 天 VIP`);
+    } catch (err) {
+      modalError("操作失败：" + err.message);
     }
-  } catch (err) {
-    modalError("下单失败：" + err.message);
-  }
-}
-
-/* 扫码支付：渲染二维码 + 轮询订单状态 */
-function showQrPayModal(order) {
-  const qrId = "vip-qr-canvas";
-  const body = order.dev
-    ? `<div class="modal-msg">开发模式（未配置支付宝）：点击下方按钮模拟支付成功。</div>
-       <a class="modal-link" href="${escapeHtml(order.pay_url)}" target="_blank" rel="noopener">模拟支付 → ${escapeHtml(order.order_no)}</a>`
-    : `<div class="modal-msg">请使用<b>支付宝 App</b> 扫码支付：<b>¥${escapeHtml(order.amount)}</b>（${escapeHtml(order.name)}）</div>
-       <div class="vip-qr"><div id="${qrId}"></div></div>
-       <div class="modal-msg" id="vip-qr-status" style="color:var(--text-dim);font-size:12px;">等待扫码支付…</div>`;
-  openModal(
-    "扫码支付",
-    body,
-    `<button class="btn btn-small" id="modal-cancel">取消</button>`
-  );
-  $("modal-cancel").addEventListener("click", () => {
-    clearInterval(vipQrTimer);
-    closeModal();
   });
-  if (!order.dev) {
-    new QRCode(document.getElementById(qrId), { text: order.qr_code, width: 220, height: 220 });
-    vipQrTimer = setInterval(async () => {
-      try {
-        const resp = await apiFetch("/api/vip/order/" + encodeURIComponent(order.order_no));
-        const st = await resp.json();
-        if (resp.ok && st.status === "paid") {
-          clearInterval(vipQrTimer);
-          $("vip-qr-status").textContent = "✅ 支付成功";
-          setTimeout(async () => {
-            closeModal();
-            const me = await apiFetch("/api/auth/me");
-            if (me.ok) { auth.user = (await me.json()).user; renderUserArea(); }
-            toast("🎉 VIP 开通成功");
-          }, 800);
-        }
-      } catch { /* 忽略 */ }
-    }, 2000);
-  }
 }
 
 function showLoginModal() {

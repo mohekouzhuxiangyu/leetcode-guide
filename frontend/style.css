@@ -1130,3 +1130,45 @@ mark {
 .vip-pay-ways .btn { flex: 1; }
 .vip-qr { display: flex; justify-content: center; margin: 10px 0; }
 .vip-qr #vip-qr-canvas, .vip-qr canvas { border: 1px solid var(--border); border-radius: 8px; padding: 8px; background: #fff; }
+
+/* ---------- 自愿捐款 ---------- */
+.donate-amounts { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0; }
+.donate-amt {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.donate-amt:hover { border-color: var(--accent); color: var(--accent); }
+.donate-amt.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.donate-custom {
+  flex: 1;
+  min-width: 120px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 13px;
+  padding: 6px 14px;
+  outline: none;
+}
+.donate-custom:focus { border-color: var(--accent); }
+.donate-qrs { display: flex; gap: 16px; justify-content: center; margin: 14px 0; flex-wrap: wrap; }
+.donate-qr { text-align: center; }
+.donate-qr-title { font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text); }
+.donate-qr img {
+  width: 180px;
+  height: 180px;
+  object-fit: contain;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px;
+}
+.donate-qr-missing { font-size: 12px; color: var(--text-dim); padding: 60px 0; }
+.donate-tip { font-size: 12px !important; color: var(--text-dim); }

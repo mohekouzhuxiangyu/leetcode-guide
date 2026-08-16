@@ -205,6 +205,25 @@ def mark_paid(order_no: str) -> bool:
     return True
 
 
+def grant_vip(email: str, days: int) -> bool:
+    """管理员手动为用户开通/续期 VIP（自愿捐款后人工开通）。"""
+    email = (email or "").strip().lower()
+    if not email or days <= 0:
+        return False
+    row = query("SELECT id, vip_expires_at FROM users WHERE email = %s", (email,), fetch="one")
+    if not row:
+        return False
+    base = datetime.now(timezone.utc)
+    if row["vip_expires_at"] and row["vip_expires_at"] > base:
+        base = row["vip_expires_at"]
+    new_exp = base + timedelta(days=days)
+    query(
+        "UPDATE users SET vip=TRUE, vip_expires_at=%s WHERE id=%s",
+        (new_exp, row["id"]),
+    )
+    return True
+
+
 def verify_alipay_notify(form: dict) -> bool:
     """校验支付宝异步通知签名（生产环境）。"""
     if not is_alipay_configured():

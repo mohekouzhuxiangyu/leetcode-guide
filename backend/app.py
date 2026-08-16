@@ -158,6 +158,22 @@ async def vip_order_status(order_no: str, user: dict = Depends(get_current_user)
     return st
 
 
+class VipGrantRequest(BaseModel):
+    email: str
+    days: int = 30
+
+
+@app.post("/api/vip/grant")
+async def vip_grant(req: VipGrantRequest, user: dict = Depends(get_current_user)) -> dict:
+    """管理员手动为用户开通 VIP（自愿捐款后人工开通）。"""
+    if not user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="仅管理员可操作")
+    ok = vip.grant_vip(req.email, req.days)
+    if not ok:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    return {"ok": True, "email": req.email, "days": req.days}
+
+
 @app.get("/api/vip/mock-pay")
 async def vip_mock_pay(order_no: str) -> RedirectResponse:
     """开发模式：未配置支付宝时点击该链接模拟支付成功。"""

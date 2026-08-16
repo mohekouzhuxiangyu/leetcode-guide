@@ -26,6 +26,7 @@ SMTP_USER = os.getenv("SMTP_USER", "")
 SMTP_PASS = os.getenv("SMTP_PASS", "")
 SMTP_FROM = os.getenv("SMTP_FROM", "leetcode-guide@example.com")
 APP_BASE_URL = os.getenv("APP_BASE_URL", "http://127.0.0.1:8001")
+ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "")
 
 _PBKDF2_ITERATIONS = 120_000
 
@@ -123,6 +124,7 @@ def _user_public(row) -> dict:
         "email_verified": row["email_verified"],
         "vip": bool(row["vip"]),
         "vip_expires_at": row["vip_expires_at"].isoformat() if row.get("vip_expires_at") else None,
+        "is_admin": bool(ADMIN_EMAIL) and row["email"].strip().lower() == ADMIN_EMAIL.strip().lower(),
     }
 
 
