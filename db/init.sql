@@ -98,6 +98,16 @@ CREATE TABLE IF NOT EXISTS usage_log (
 );
 CREATE INDEX IF NOT EXISTS idx_usage_log_user_day ON usage_log (user_id, created_at);
 
+-- 捐赠记录（自愿捐赠 / 拒绝捐赠直接开通 / 支付宝订单），管理员可查每个用户的捐赠金额
+CREATE TABLE IF NOT EXISTS donations (
+    id         SERIAL PRIMARY KEY,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    amount     NUMERIC(8,2) NOT NULL DEFAULT 0,
+    source     TEXT NOT NULL DEFAULT 'donate',  -- donate=自愿捐赠 | free=拒绝捐赠直接开通 | order=支付宝订单
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_donations_user ON donations (user_id);
+
 -- 登录会话表
 CREATE TABLE IF NOT EXISTS sessions (
     token      TEXT PRIMARY KEY,

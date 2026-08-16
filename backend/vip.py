@@ -183,15 +183,20 @@ def verify_payjs_notify(form: dict) -> bool:
 
 
 def mark_paid(order_no: str) -> bool:
-    """订单支付成功：更新订单状态并给用户开通/续期 VIP。"""
+    """订单支付成功：更新订单状态并给用户开通/续期 VIP，同时记录捐赠。"""
     row = query(
         """UPDATE vip_orders SET status='paid', paid_at=now()
-           WHERE order_no=%s AND status='pending' RETURNING user_id, plan""",
+           WHERE order_no=%s AND status='pending' RETURNING user_id, plan, amount""",
         (order_no,),
         fetch="one",
     )
     if not row:
         return False
+    # 记录捐赠（支付宝订单渠道）
+    query(
+        "INSERT INTO donations (user_id, amount, source) VALUES (%s, %s, 'order')",
+        (row["user_id"], row["amount"]),
+    )
     plan = PLANS.get(row["plan"], PLANS["monthly"])
     cur = query("SELECT vip_expires_at FROM users WHERE id=%s", (row["user_id"],), fetch="one")
     base = datetime.now(timezone.utc)

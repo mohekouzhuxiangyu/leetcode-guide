@@ -300,6 +300,8 @@ function showGrantModal() {
        </div>
        <button class="btn btn-small" id="grant-usage-btn" style="width:100%;margin-top:8px;">📊 查看今日用量（计费流水）</button>
        <div id="grant-usage-list"></div>
+       <button class="btn btn-small" id="grant-donations-btn" style="width:100%;margin-top:8px;">💰 查看捐赠明细（全部用户）</button>
+       <div id="grant-donations-list"></div>
        <hr style="border:none;border-top:1px solid var(--border);margin:14px 0;">
        <label class="modal-label">👥 全部用户（<span id="admin-users-total">…</span>人）· 点击「开通 / 取消 VIP」更改权限</label>
        <div id="admin-users-list" style="max-height:44vh;overflow-y:auto;"></div>
@@ -343,7 +345,32 @@ function showGrantModal() {
       modalError("获取失败：" + err.message);
     }
   });
+  $("grant-donations-btn").addEventListener("click", loadAdminDonations);
   loadAdminUsers();
+}
+
+async function loadAdminDonations() {
+  const list = $("grant-donations-list");
+  if (!list) return;
+  try {
+    const resp = await apiFetch("/api/admin/donations");
+    const data = await resp.json();
+    if (!resp.ok) { modalError(data.detail || "获取失败"); return; }
+    if (!data.items.length) {
+      list.innerHTML = `<div class="modal-msg" style="color:var(--text-dim);font-size:12px;margin-top:8px;">暂无捐赠记录</div>`;
+      return;
+    }
+    const srcLabel = { donate: "自愿捐赠", free: "拒绝捐赠直开", order: "支付宝订单" };
+    list.innerHTML = `<div class="modal-msg" style="font-size:12px;margin-top:8px;">累计收到捐赠 <b>¥${data.total_amount}</b></div>
+      <table class="usage-table"><tr><th>用户</th><th>邮箱</th><th>金额</th><th>渠道</th><th>时间</th></tr>
+      ${data.items.map((i) => `<tr>
+        <td>${escapeHtml(i.username)}</td><td>${escapeHtml(i.email)}</td>
+        <td><b>¥${i.amount}</b></td><td>${srcLabel[i.source] || escapeHtml(i.source)}</td>
+        <td>${escapeHtml(i.created_at)}</td></tr>`).join("")}
+      </table>`;
+  } catch (err) {
+    modalError("获取捐赠明细失败：" + err.message);
+  }
 }
 
 async function loadAdminUsers() {
@@ -364,13 +391,14 @@ async function loadAdminUsers() {
       return;
     }
     list.innerHTML = `<table class="usage-table">
-      <tr><th>ID</th><th>用户名</th><th>邮箱</th><th>注册</th><th>今日</th><th>题目</th><th>分组</th><th>VIP</th><th>操作</th></tr>
+      <tr><th>ID</th><th>用户名</th><th>邮箱</th><th>注册</th><th>今日</th><th>捐赠</th><th>题目</th><th>分组</th><th>VIP</th><th>操作</th></tr>
       ${data.users.map((u) => `<tr>
         <td>${u.id}</td>
         <td>${escapeHtml(u.username)}</td>
         <td>${escapeHtml(u.email)}${u.email_verified ? "" : ` <span style="color:var(--red)">(未验证)</span>`}</td>
         <td>${escapeHtml(u.created_at)}</td>
         <td>${u.today_usage}/200</td>
+        <td>${u.donated > 0 ? `<b>¥${u.donated.toFixed(2)}</b>` : "—"}</td>
         <td>${u.record_count}</td>
         <td>${u.group_count}</td>
         <td>${u.vip ? '<span class="vip-badge">VIP</span>' : "—"}</td>
@@ -1641,7 +1669,7 @@ function bindVipPanel() {
       const resp = await apiFetch("/api/vip/self-upgrade", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount: 1 }),
+        body: JSON.stringify({ amount: 1, source: "free" }),
       });
       const data = await resp.json();
       if (!resp.ok) { toast(data.detail || "操作失败", true); return; }

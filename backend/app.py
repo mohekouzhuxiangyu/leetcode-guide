@@ -179,6 +179,7 @@ async def vip_order_status(order_no: str, user: dict = Depends(get_current_user)
 
 class VipSelfUpgradeRequest(BaseModel):
     amount: float = 1.0
+    source: str = "donate"   # donate=自愿捐赠 | free=拒绝捐赠直接开通（不记捐赠）
 
 
 @app.post("/api/vip/self-upgrade")
@@ -195,6 +196,12 @@ async def vip_self_upgrade(req: VipSelfUpgradeRequest, user: dict = Depends(get_
         "UPDATE users SET vip = TRUE, vip_expires_at = NULL WHERE id = %s",
         (user["id"],),
     )
+    # 记录捐赠金额（管理员可查）；"拒绝捐赠直接开通"不记捐赠
+    if (req.source or "donate") != "free":
+        query(
+            "INSERT INTO donations (user_id, amount, source) VALUES (%s, %s, 'donate')",
+            (user["id"], amount),
+        )
     row = auth.get_user_row(user["id"])
     return {"ok": True, "amount": amount, "user": auth._user_public(row)}
 
@@ -260,6 +267,7 @@ async def admin_list_users(user: dict = Depends(get_current_user)) -> dict:
     rows = query(
         """SELECT u.id, u.username, u.email, u.email_verified, u.vip, u.created_at,
                   COALESCE(d.count, 0) AS today_usage,
+                  COALESCE(don.total, 0) AS donated,
                   (SELECT COUNT(*) FROM records r WHERE r.user_id = u.id) AS record_count,
                   (SELECT COUNT(*) FROM (
                       SELECT DISTINCT group_name AS n FROM record_groups g WHERE g.user_id = u.id
@@ -268,6 +276,8 @@ async def admin_list_users(user: dict = Depends(get_current_user)) -> dict:
                   ) gc) AS group_count
            FROM users u
            LEFT JOIN daily_usage d ON d.user_id = u.id AND d.day = CURRENT_DATE
+           LEFT JOIN (SELECT user_id, SUM(amount) AS total FROM donations GROUP BY user_id) don
+                  ON don.user_id = u.id
            ORDER BY u.id""",
         fetch="all",
     )
@@ -280,12 +290,38 @@ async def admin_list_users(user: dict = Depends(get_current_user)) -> dict:
             "vip": bool(r["vip"]),
             "created_at": r["created_at"].strftime("%Y-%m-%d") if r["created_at"] else "",
             "today_usage": int(r["today_usage"] or 0),
+            "donated": float(r["donated"] or 0),
             "record_count": int(r["record_count"] or 0),
             "group_count": int(r["group_count"] or 0),
         }
         for r in rows
     ]
     return {"users": items, "total": len(items)}
+
+
+@app.get("/api/admin/donations")
+async def admin_donations(user: dict = Depends(get_current_user)) -> dict:
+    """管理员查看全部捐赠明细（用户、金额、渠道、时间）。"""
+    if not user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="仅管理员可操作")
+    rows = query(
+        """SELECT u.username, u.email, don.amount, don.source, don.created_at
+           FROM donations don JOIN users u ON u.id = don.user_id
+           ORDER BY don.created_at DESC LIMIT 1000""",
+        fetch="all",
+    )
+    total = query("SELECT COALESCE(SUM(amount), 0) AS s FROM donations", fetch="one")
+    items = [
+        {
+            "username": r["username"],
+            "email": r["email"],
+            "amount": float(r["amount"] or 0),
+            "source": r["source"],
+            "created_at": r["created_at"].strftime("%Y-%m-%d %H:%M") if r["created_at"] else "",
+        }
+        for r in rows
+    ]
+    return {"items": items, "total_amount": float(total["s"] or 0)}
 
 
 class AdminVipRequest(BaseModel):
