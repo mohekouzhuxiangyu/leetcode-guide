@@ -1634,10 +1634,24 @@ function bindNoteEditor() {
 
 /* VIP 页面：自助开通绑定 */
 function bindVipPanel() {
-  // 不想捐赠：返回继续免费使用
-  $("btn-donate-skip").addEventListener("click", () => {
-    showInputOnly();
-    toast("好的，继续免费浏览 hot100 👌");
+  // 拒绝捐赠按钮：幽默文案，点了也直接开通 VIP（诚信制）
+  $("btn-donate-skip").addEventListener("click", async () => {
+    if (!auth.user) { showLoginModal(); return; }
+    try {
+      const resp = await apiFetch("/api/vip/self-upgrade", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: 1 }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) { toast(data.detail || "操作失败", true); return; }
+      auth.user = data.user;
+      renderUserArea();
+      toast("😤 行吧，VIP 已直接开通。网站能不能撑住，就看各位老板了 🙏");
+      showInputOnly();
+    } catch (err) {
+      toast("操作失败：" + err.message, true);
+    }
   });
   $("btn-self-upgrade").addEventListener("click", async () => {
     if (!auth.user) { showLoginModal(); return; }

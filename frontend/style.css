@@ -1282,7 +1282,9 @@ mark {
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
-#btn-self-upgrade { margin-top: 14px; }
+/* VIP 页捐赠操作按钮（我已捐赠 / 拒绝捐赠）：同一水平线、等高、等宽 */
+.donate-actions { display: flex; align-items: stretch; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+.donate-actions .btn { flex: 1 1 220px; min-width: 0; text-align: center; }
 @media (max-width: 860px) { .vip-page { grid-template-columns: 1fr; } }
 
 /* ---------- 心得 VIP 门控 / 用量表 ---------- */
@@ -1308,7 +1310,3 @@ mark {
   outline: none;
 }
 .donate-input:focus { border-color: var(--accent); }
-
-/* VIP 页捐赠操作按钮（我已捐赠 / 我不想捐赠） */
-.donate-actions { display: flex; gap: 10px; margin-top: 14px; }
-.donate-actions .btn { flex: 1; }
