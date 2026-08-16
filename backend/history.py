@@ -27,7 +27,7 @@ def _summary_from_row(r) -> dict:
         "tags": r["tags"] or [],
         "category": r["category"],
         "group": r["group_name"] or "",
-        "url": r["url"] or f"https://leetcode.com/problems/{r['slug']}/",
+        "url": r["url"] or f"https://leetcode.cn/problems/{r['slug']}/",
         "shared": r["user_id"] is None,
         "created_at": _fmt_ts(r["created_at"]),
         "updated_at": _fmt_ts(r["updated_at"]),
@@ -74,7 +74,7 @@ def get_record(user_id: Optional[int], slug: str) -> Optional[dict]:
         return None
     return {
         "slug": row["slug"],
-        "url": row["url"] or f"https://leetcode.com/problems/{row['slug']}/",
+        "url": row["url"] or f"https://leetcode.cn/problems/{row['slug']}/",
         "title": row["title"],
         "difficulty": row["difficulty"],
         "tags": row["tags"] or [],

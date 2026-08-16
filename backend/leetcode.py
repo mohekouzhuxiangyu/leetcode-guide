@@ -227,7 +227,7 @@ def _normalize(q: dict) -> dict:
             "params": meta.get("params"),
             "return": meta.get("return"),
         },
-        "url": f"https://leetcode.com/problems/{slug}/",
+        "url": f"https://leetcode.cn/problems/{slug}/",
         "source": "leetcode",
     }
 
@@ -245,6 +245,6 @@ def fallback_problem(slug: str, url: str) -> dict:
         "stats": {},
         "hints": [],
         "meta": {},
-        "url": url or f"https://leetcode.com/problems/{slug}/",
+        "url": url or f"https://leetcode.cn/problems/{slug}/",
         "source": "llm",
     }

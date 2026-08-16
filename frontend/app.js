@@ -1308,7 +1308,7 @@ function makeHistoryItem(item) {
   const li = document.createElement("li");
   li.className = "history-item diff-" + item.difficulty;
   li.dataset.slug = item.slug;
-  const linkUrl = item.url || "https://leetcode.com/problems/" + item.slug + "/";
+  const linkUrl = item.url || "https://leetcode.cn/problems/" + item.slug + "/";
   const freeBadge = item.shared ? '<span class="free-badge">免费</span> ' : "";
   const delBtn = item.shared ? "" : '<button class="h-del" title="删除记录">🗑</button>';
   li.innerHTML = `
@@ -1660,7 +1660,7 @@ function init() {
   $("btn-regen").addEventListener("click", () => {
     if (!requireVip()) return;
     if (currentSlug && !(state.record && state.record.shared)) {
-      submitGenerate("https://leetcode.com/problems/" + currentSlug + "/");
+      submitGenerate("https://leetcode.cn/problems/" + currentSlug + "/");
     }
   });
 
