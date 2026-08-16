@@ -176,27 +176,30 @@ function requireVip() {
 }
 
 function renderUserArea() {
-  const el = $("user-area");
-  if (!el) return;
-  if (auth.user) {
-    const vipHtml = isVip()
-      ? `<span class="vip-badge" title="VIP 有效期至 ${escapeHtml(auth.user.vip_expires_at || "永久")}">👑 VIP</span>`
-      : `<button class="ua-action vip-buy" id="ua-vip">开通 VIP</button>`;
-    el.innerHTML = `<div class="ua-inner">
-      <span class="ua-name">👤 ${escapeHtml(auth.user.username)} ${vipHtml}</span>
-      <button class="ua-action" id="ua-logout">退出</button>
-    </div>`;
-    if (!isVip()) $("ua-vip").addEventListener("click", showVipModal);
-    $("ua-logout").addEventListener("click", logoutUser);
-  } else {
-    el.innerHTML = `<div class="ua-inner">
-      <span class="ua-name" style="color:var(--text-dim)">👤 游客（可浏览 hot100）</span>
-      <span><button class="ua-action" id="ua-login">登录</button> ·
-           <button class="ua-action" id="ua-register">注册</button></span>
-    </div>`;
-    $("ua-login").addEventListener("click", showLoginModal);
-    $("ua-register").addEventListener("click", showRegisterModal);
-  }
+  const areas = document.querySelectorAll(".user-area");
+  if (!areas.length) return;
+  areas.forEach((el) => {
+    if (auth.user) {
+      const vipHtml = isVip()
+        ? `<span class="vip-badge" title="VIP 有效期至 ${escapeHtml(auth.user.vip_expires_at || "永久")}">👑 VIP</span>`
+        : `<button class="ua-action vip-buy" id="ua-vip">开通 VIP</button>`;
+      el.innerHTML = `<div class="ua-inner">
+        <span class="ua-name">👤 ${escapeHtml(auth.user.username)} ${vipHtml}</span>
+        <button class="ua-action" id="ua-logout">退出</button>
+      </div>`;
+    } else {
+      el.innerHTML = `<div class="ua-inner">
+        <span class="ua-name" style="color:var(--text-dim)">👤 游客（可浏览 hot100）</span>
+        <span><button class="ua-action" id="ua-login">登录</button> ·
+             <button class="ua-action" id="ua-register">注册</button></span>
+      </div>`;
+    }
+  });
+  // 绑定事件（每个容器）
+  document.querySelectorAll(".ua-login").forEach((b) => b.addEventListener("click", showLoginModal));
+  document.querySelectorAll(".ua-register").forEach((b) => b.addEventListener("click", showRegisterModal));
+  document.querySelectorAll(".ua-logout").forEach((b) => b.addEventListener("click", logoutUser));
+  document.querySelectorAll(".ua-vip").forEach((b) => b.addEventListener("click", showVipModal));
 }
 
 /* 开通 VIP（支付宝支付） */

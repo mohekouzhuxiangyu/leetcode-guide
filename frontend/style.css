@@ -452,6 +452,16 @@ html { overflow-y: scroll; }
   .history-list { flex: none; overflow-y: visible; max-height: 50vh; }
   #main { padding: 20px 16px; }
   .input-row { flex-direction: column; }
+  /* 结果区左右布局在窄屏堆叠 */
+  .result-layout { flex-direction: column; }
+  .result-left {
+    flex: 1 1 auto;
+    width: 100%;
+    position: static;
+    max-height: none;
+    overflow-y: visible;
+  }
+  .result-left .ps-body { max-height: 40vh; }
 }
 
 /* ---------- 新增：二级按钮 / 分类筛选 / 批量生成 / 动画演示 / 模板库 ---------- */
@@ -866,16 +876,18 @@ mark {
 }
 .btn-theme:hover { border-color: var(--accent); color: var(--accent); }
 
-/* 用户区 */
-.user-area { margin-bottom: 16px; font-size: 13px; }
+/* 用户区（内嵌于各面板头部，随内容布局，不再单独占一行） */
+.user-area { font-size: 13px; }
 .user-area .ua-inner {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   background: var(--bg-panel);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px 10px;
+  border-radius: 999px;
+  padding: 4px 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
 }
 .user-area .ua-name { color: var(--text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .user-area .ua-action { color: var(--accent); cursor: pointer; background: none; border: none; font-size: 13px; padding: 0; }
@@ -994,14 +1006,6 @@ mark {
 .group-hint { margin-top: 10px; font-size: 12px; }
 .group-hint span { color: var(--accent-hover); font-weight: 600; }
 
-/* ---------- 顶栏（用户区右上角） ---------- */
-.topbar {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  margin-bottom: 16px;
-}
-.top-user-area { margin-bottom: 0; }
 .top-user-area .ua-inner {
   background: var(--bg-panel);
   border: 1px solid var(--border);
@@ -1057,3 +1061,33 @@ mark {
 }
 .templates-search input:focus { border-color: var(--accent); }
 #tpl-tags { margin-bottom: 16px; }
+
+/* ---------- 面板头部（标题 + 用户模块同一行） ---------- */
+.panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+.panel-head h1 { margin-bottom: 0; }
+
+/* ---------- 结果区左右布局：左=题目信息，右=算法解析等 ---------- */
+.result-layout { display: flex; gap: 20px; align-items: flex-start; }
+.result-left {
+  flex: 0 0 360px;
+  width: 360px;
+  position: sticky;
+  top: 12px;
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+}
+.result-right { flex: 1 1 auto; min-width: 0; }
+.result-left .ps-body { max-height: none; }
+.result-left .problem-sticky { margin-bottom: 0; }
+
+.result-meta .result-user { margin-left: auto; }
+
+/* 模板库头部右侧（用户模块 + 返回） */
+.templates-header-right { display: flex; align-items: center; gap: 10px; margin-left: auto; }
