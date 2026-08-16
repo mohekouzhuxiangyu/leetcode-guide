@@ -1083,3 +1083,16 @@ mark {
 [data-theme="light"] .btn-theme { color: var(--text-dim); }
 [data-theme="light"] .h-del { color: var(--text-dim); }
 [data-theme="light"] .history-group { color: #1d4ed8; }
+
+/* ========== 修复：白天模式点击后白底白字（light 通用规则覆盖了 active 态） ========== */
+/* 分类/分组/难度 chips 点击选中后：恢复彩色底 + 白字 */
+[data-theme="light"] .cat-chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+[data-theme="light"] .cat-chip.diff-Easy.active   { background: #16a34a; border-color: #16a34a; color: #fff; }
+[data-theme="light"] .cat-chip.diff-Medium.active { background: #d97706; border-color: #d97706; color: #fff; }
+[data-theme="light"] .cat-chip.diff-Hard.active   { background: #dc2626; border-color: #dc2626; color: #fff; }
+
+/* 批量「开始/停止」按钮：不被 .btn-small 通用浅色规则覆盖（保持绿/红底白字） */
+[data-theme="light"] .btn-small.btn-start,
+[data-theme="light"] .btn-small.btn-start:hover { background: #16a34a; color: #fff; }
+[data-theme="light"] .btn-small.btn-stop,
+[data-theme="light"] .btn-small.btn-stop:hover { background: #b91c1c; color: #fff; }
