@@ -134,18 +134,17 @@
         </div>
       </div>
 
-      <!-- 固定的题目描述（滚动时置顶，方便与下方内容对比） -->
+      <!-- 固定的题目信息（滚动时置顶，可折叠隐藏） -->
       <div id="problem-sticky" class="problem-sticky hidden">
         <button class="ps-toggle" id="ps-toggle">
-          <span>📋 题目描述（固定）</span>
+          <span>📋 题目信息（固定，点击收起/展开）</span>
           <span class="ps-arrow">▾</span>
         </button>
         <div class="ps-body" id="ps-body"></div>
       </div>
 
       <div class="tabs" id="tabs">
-        <button class="tab active" data-tab="problem">📋 题目信息</button>
-        <button class="tab" data-tab="analysis">📝 算法解析</button>
+        <button class="tab active" data-tab="analysis">📝 算法解析</button>
         <button class="tab" data-tab="walkthrough">🎬 动画演示</button>
         <button class="tab" data-tab="flowchart">🔄 流程图</button>
         <button class="tab" data-tab="code">💻 代码</button>
@@ -153,7 +152,6 @@
         <button class="tab" data-tab="note">📝 心得</button>
       </div>
 
-      <div class="tab-content" id="tab-problem"></div>
       <div class="tab-content hidden" id="tab-analysis"></div>
       <div class="tab-content hidden" id="tab-walkthrough">
         <div id="walkthrough-container"></div>

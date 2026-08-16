@@ -752,23 +752,20 @@ function renderResult(record) {
   // 共享目录只读：隐藏重新生成按钮
   $("btn-regen").classList.toggle("hidden", !!record.shared);
 
-  // 固定题目描述（置顶，便于与下方内容对比；Markdown 渲染）
+  // 固定题目描述：完整展示题目信息（描述+插图+示例+约束+函数模板），可隐藏
   const ps = $("problem-sticky");
-  const descRaw = (record.problem_zh || problem.content_text || "").trim();
-  if (descRaw) {
-    const { description } = parseProblemSections(descRaw);
-    $("ps-body").innerHTML = renderMarkdown(description || descRaw);
+  const hasContent = (record.problem_zh || problem.content_text || "").trim();
+  if (hasContent) {
+    $("ps-body").innerHTML = buildProblemHtml(problem, record);
+    highlightAll($("ps-body"));
     ps.classList.remove("hidden");
-    ps.classList.add("open");
+    ps.classList.remove("collapsed");
   } else {
     ps.classList.add("hidden");
   }
 
-  renderProblemTab(problem, record);
-  state.renderedTabs.problem = true;
-
   setActiveHistory(record.slug);
-  switchTab("problem");
+  switchTab("analysis");
 }
 
 function renderExampleBody(body) {
@@ -794,8 +791,7 @@ function renderExampleBody(body) {
   return html;
 }
 
-function renderProblemTab(problem, record) {
-  const el = $("tab-problem");
+function buildProblemHtml(problem, record) {
   const content = (problem.content_text || "").trim();
   const snippets = problem.code_snippets || {};
   const zh = (record.problem_zh || "").trim();
@@ -832,8 +828,7 @@ function renderProblemTab(problem, record) {
       html += `<div class="code-block"><pre><code class="language-${LANG_ALIAS[lang]?.hl || "text"}">${escapeHtml(code)}</code></pre></div>`;
     }
   }
-  el.innerHTML = html;
-  highlightAll(el);
+  return html;
 }
 
 function renderAnalysisTab(analysis) {
@@ -1749,7 +1744,7 @@ function init() {
   });
 
   $("ps-toggle").addEventListener("click", () => {
-    $("problem-sticky").classList.toggle("open");
+    $("problem-sticky").classList.toggle("collapsed");
   });
 
   $("btn-templates").addEventListener("click", openTemplatesLibrary);
