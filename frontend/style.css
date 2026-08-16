@@ -458,8 +458,9 @@ html { overflow-y: scroll; }
   .history-list { flex: none; overflow-y: visible; max-height: 50vh; }
   #main { padding: 20px 16px; }
   .input-row { flex-direction: column; }
-  /* 结果区左右布局在窄屏堆叠 */
-  .result-layout { flex-direction: column; }
+  /* 结果区左右布局在窄屏堆叠（还原为正常页面滚动） */
+  #result-panel { height: auto; overflow: visible; }
+  .result-layout { flex-direction: column; overflow: visible; }
   .result-left {
     flex: 1 1 auto;
     width: 100%;
@@ -468,6 +469,7 @@ html { overflow-y: scroll; }
     overflow-y: visible;
   }
   .result-left .ps-body { max-height: 40vh; }
+  .result-right { overflow: visible; }
 }
 
 /* ---------- 新增：二级按钮 / 分类筛选 / 批量生成 / 动画演示 / 模板库 ---------- */
@@ -1079,17 +1081,32 @@ mark {
 }
 .panel-head h1 { margin-bottom: 0; }
 
-/* ---------- 结果区左右布局：左=题目信息，右=算法解析等 ---------- */
-.result-layout { display: flex; gap: 20px; align-items: flex-start; }
+/* ---------- 结果区：固定视口高度，左右各自独立滚动 ---------- */
+#result-panel {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 64px);
+  overflow: hidden;
+}
+.result-header { flex: 0 0 auto; }
+.result-layout {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  gap: 20px;
+  overflow: hidden;
+}
 .result-left {
-  flex: 0 0 360px;
-  width: 360px;
-  position: sticky;
-  top: 12px;
-  max-height: calc(100vh - 24px);
+  flex: 0 0 440px;
+  width: 440px;
   overflow-y: auto;
 }
-.result-right { flex: 1 1 auto; min-width: 0; }
+.result-right {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+}
 .result-left .ps-body { max-height: none; }
 .result-left .problem-sticky { margin-bottom: 0; }
 
