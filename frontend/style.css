@@ -470,6 +470,7 @@ html { overflow-y: scroll; }
   }
   .result-left .ps-body { max-height: 40vh; }
   .result-right { overflow: visible; }
+  .fixed-user { position: static; display: flex; justify-content: flex-end; margin-top: 8px; padding: 0 16px; }
 }
 
 /* ---------- 新增：二级按钮 / 分类筛选 / 批量生成 / 动画演示 / 模板库 ---------- */
@@ -1114,3 +1115,11 @@ mark {
 
 /* 模板库头部右侧（用户模块 + 返回） */
 .templates-header-right { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+
+/* ---------- 右上角固定用户模块 ---------- */
+.fixed-user {
+  position: fixed;
+  top: 12px;
+  right: 16px;
+  z-index: 70;
+}

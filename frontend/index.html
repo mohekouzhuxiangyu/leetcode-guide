@@ -12,6 +12,9 @@
   <link id="theme-css" rel="stylesheet" href="/assets/theme-dark.css?v=1" />
 </head>
 <body>
+  <!-- 右上角用户模块（固定浮动） -->
+  <div id="user-area" class="user-area fixed-user"></div>
+
   <aside id="sidebar">
     <div class="brand">
       <img class="brand-icon" src="/assets/icon.png" alt="Logo" />
@@ -64,7 +67,6 @@
     <section id="input-panel" class="panel">
       <div class="panel-head">
         <h1>输入力扣题目链接</h1>
-        <div class="user-area"></div>
       </div>
       <p class="subtitle">粘贴 Hot 100 任意一题的链接，Agent 自动生成算法解析、动画演示、流程图与多语言代码</p>
 
@@ -130,7 +132,7 @@
           <a id="result-link" href="#" target="_blank" rel="noopener">查看原题 ↗</a>
           <span id="result-time"></span>
           <button id="btn-regen" class="btn btn-small">🔄 重新生成</button>
-          <span class="result-user"><span class="user-area"></span></span>
+          
         </div>
       </div>
 
@@ -199,7 +201,7 @@
     <section id="templates-panel" class="panel hidden">
       <div class="templates-header">
         <h2>📋 算法答题模板库</h2>
-        <span class="templates-header-right"><span class="user-area"></span><button id="btn-templates-back" class="btn btn-small">← 返回</button></span>
+        <span class="templates-header-right"><button id="btn-templates-back" class="btn btn-small">← 返回</button></span>
       </div>
       <p class="subtitle">针对每种算法类型的固定答题模板（Python 骨架），套用模板可快速写出标准解</p>
       <div class="templates-search">
