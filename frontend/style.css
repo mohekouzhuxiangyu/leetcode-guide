@@ -1098,3 +1098,20 @@ mark {
 [data-theme="light"] .btn-small.btn-start:hover { background: #16a34a; color: #fff; }
 [data-theme="light"] .btn-small.btn-stop,
 [data-theme="light"] .btn-small.btn-stop:hover { background: #b91c1c; color: #fff; }
+
+/* ---------- 顶栏（用户区右上角） ---------- */
+.topbar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.top-user-area { margin-bottom: 0; }
+.top-user-area .ua-inner {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 13px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}

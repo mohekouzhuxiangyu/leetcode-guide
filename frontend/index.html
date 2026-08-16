@@ -19,9 +19,6 @@
       <button id="btn-theme" class="btn-theme" title="切换白天/黑夜风格">🌙</button>
     </div>
 
-    <!-- 用户区 -->
-    <div id="user-area" class="user-area"></div>
-
     <button id="btn-new" class="btn btn-primary btn-block">＋ 新建题目</button>
     <button id="btn-templates" class="btn btn-secondary btn-block">📋 算法模板库</button>
 
@@ -60,6 +57,11 @@
   </aside>
 
   <main id="main">
+    <!-- 顶栏：登录/用户区在右上角 -->
+    <div id="topbar" class="topbar">
+      <div id="user-area" class="user-area top-user-area"></div>
+    </div>
+
     <!-- 输入区 -->
     <section id="input-panel" class="panel">
       <h1>输入力扣题目链接</h1>
