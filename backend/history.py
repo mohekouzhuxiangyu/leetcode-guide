@@ -1,9 +1,8 @@
-"""历史记录存储：PostgreSQL 持久化。
+"""历史记录存储：PostgreSQL 持久化（按用户隔离）。
 
 表结构见 db/init.sql；连接串通过环境变量 DATABASE_URL 配置（backend/db.py）。
-按 slug 去重（同一题重复生成会更新记录），记录可归属分组。
+按 slug 去重（同一题重复生成会更新记录），记录归属用户并可分组。
 """
-import time
 from typing import Optional
 
 import psycopg2.extras
@@ -33,18 +32,21 @@ def _summary_from_row(r) -> dict:
     }
 
 
-def list_records() -> list[dict]:
-    """按更新时间倒序返回摘要列表。"""
+def list_records(user_id: int) -> list[dict]:
+    """按更新时间倒序返回摘要列表（仅当前用户）。"""
     rows = query(
         """SELECT slug, title, difficulty, tags, category, group_name, url, created_at, updated_at
-           FROM records ORDER BY updated_at DESC""",
+           FROM records WHERE user_id = %s ORDER BY updated_at DESC""",
+        (user_id,),
         fetch="all",
     )
     return [_summary_from_row(r) for r in rows]
 
 
-def get_record(slug: str) -> Optional[dict]:
-    row = query("SELECT * FROM records WHERE slug = %s", (slug,), fetch="one")
+def get_record(user_id: int, slug: str) -> Optional[dict]:
+    row = query(
+        "SELECT * FROM records WHERE user_id = %s AND slug = %s", (user_id, slug), fetch="one"
+    )
     if row is None:
         return None
     return {
@@ -67,19 +69,23 @@ def get_record(slug: str) -> Optional[dict]:
     }
 
 
-def upsert_record(slug: str, record: dict) -> None:
-    """插入或更新记录；未指定分组时保留原有分组，created_at 首次写入后不变。"""
+def upsert_record(user_id: Optional[int], slug: str, record: dict) -> None:
+    """插入或更新记录；未指定分组时保留原有分组，created_at 首次写入后不变。
+
+    user_id 为 None 表示历史遗留数据（首个注册用户会自动认领）。
+    """
     conn = get_conn()
     try:
         with conn.cursor() as cur:
             cur.execute(
                 """
                 INSERT INTO records
-                  (slug, title, difficulty, tags, category, group_name, url,
+                  (user_id, slug, title, difficulty, tags, category, group_name, url,
                    problem, problem_zh, analysis, walkthrough, flowchart, code, errors,
                    created_at, updated_at)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, now(), now())
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, now(), now())
                 ON CONFLICT (slug) DO UPDATE SET
+                  user_id = COALESCE(EXCLUDED.user_id, records.user_id),
                   title = EXCLUDED.title,
                   difficulty = EXCLUDED.difficulty,
                   tags = EXCLUDED.tags,
@@ -97,6 +103,7 @@ def upsert_record(slug: str, record: dict) -> None:
                   updated_at = now()
                 """,
                 (
+                    user_id,
                     slug,
                     record.get("title", slug),
                     record.get("difficulty", "Unknown"),
@@ -117,23 +124,30 @@ def upsert_record(slug: str, record: dict) -> None:
         conn.close()
 
 
-def delete_record(slug: str) -> bool:
-    n = query("DELETE FROM records WHERE slug = %s", (slug,))
+def delete_record(user_id: int, slug: str) -> bool:
+    n = query("DELETE FROM records WHERE user_id = %s AND slug = %s", (user_id, slug))
     return bool(n)
 
 
 # ---------------- 分组 ----------------
 
-def list_groups() -> list[dict]:
+def list_groups(user_id: int) -> list[dict]:
     """返回分组列表（显式创建 + 记录中出现的分组），带题目数。"""
-    explicit = [r["name"] for r in query("SELECT name FROM groups ORDER BY name", fetch="all")]
+    explicit = [
+        r["name"]
+        for r in query("SELECT name FROM groups WHERE user_id = %s ORDER BY name", (user_id,), fetch="all")
+    ]
     count_rows = query(
-        "SELECT group_name, COUNT(*) AS c FROM records WHERE group_name <> '' GROUP BY group_name",
+        """SELECT group_name, COUNT(*) AS c FROM records
+           WHERE user_id = %s AND group_name <> '' GROUP BY group_name""",
+        (user_id,),
         fetch="all",
     )
     counts = {r["group_name"]: r["c"] for r in count_rows}
     ungrouped_row = query(
-        "SELECT COUNT(*) AS c FROM records WHERE group_name = '' OR group_name IS NULL", fetch="one"
+        "SELECT COUNT(*) AS c FROM records WHERE user_id = %s AND (group_name = '' OR group_name IS NULL)",
+        (user_id,),
+        fetch="one",
     )
     ungrouped = ungrouped_row["c"] if ungrouped_row else 0
     names = list(dict.fromkeys(explicit + list(counts.keys())))
@@ -143,17 +157,23 @@ def list_groups() -> list[dict]:
     return result
 
 
-def create_group(name: str) -> bool:
-    n = query("INSERT INTO groups (name) VALUES (%s) ON CONFLICT (name) DO NOTHING", (name,))
+def create_group(user_id: int, name: str) -> bool:
+    n = query(
+        "INSERT INTO groups (name, user_id) VALUES (%s, %s) ON CONFLICT (name, user_id) DO NOTHING",
+        (name, user_id),
+    )
     return bool(n)
 
 
-def delete_group(name: str) -> None:
-    query("DELETE FROM groups WHERE name = %s", (name,))
+def delete_group(user_id: int, name: str) -> None:
+    query("DELETE FROM groups WHERE user_id = %s AND name = %s", (user_id, name))
 
 
-def move_records(slugs: list, group: str) -> int:
+def move_records(user_id: int, slugs: list, group: str) -> int:
     if not slugs:
         return 0
-    n = query("UPDATE records SET group_name = %s WHERE slug = ANY(%s)", [group, list(slugs)])
+    n = query(
+        "UPDATE records SET group_name = %s WHERE user_id = %s AND slug = ANY(%s)",
+        [group, user_id, list(slugs)],
+    )
     return n or 0

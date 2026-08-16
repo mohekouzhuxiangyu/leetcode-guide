@@ -12,15 +12,36 @@
 --        DATABASE_URL=postgresql://localhost:5432/leetcode_guide
 -- ============================================================
 
+-- 用户表
+CREATE TABLE IF NOT EXISTS users (
+    id             SERIAL PRIMARY KEY,
+    username       TEXT NOT NULL UNIQUE,
+    email          TEXT NOT NULL UNIQUE,
+    password_hash  TEXT NOT NULL,
+    email_verified BOOLEAN NOT NULL DEFAULT FALSE,
+    verify_token   TEXT,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- 登录会话表
+CREATE TABLE IF NOT EXISTS sessions (
+    token      TEXT PRIMARY KEY,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- 分组表
 CREATE TABLE IF NOT EXISTS groups (
-    name       TEXT PRIMARY KEY,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    name       TEXT NOT NULL,
+    user_id    INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (name, user_id)
 );
 
 -- 记录表（slug 为力扣题目唯一标识）
 CREATE TABLE IF NOT EXISTS records (
     slug        TEXT PRIMARY KEY,
+    user_id     INTEGER REFERENCES users(id) ON DELETE CASCADE,
     title       TEXT NOT NULL DEFAULT '',
     difficulty  TEXT NOT NULL DEFAULT 'Unknown',
     tags        JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -38,8 +59,14 @@ CREATE TABLE IF NOT EXISTS records (
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- 兼容旧库：补充列与索引（新库已包含，重复执行无副作用）
+ALTER TABLE records ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE groups   ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
+
 -- 常用查询索引
-CREATE INDEX IF NOT EXISTS idx_records_group_name ON records (group_name);
-CREATE INDEX IF NOT EXISTS idx_records_category   ON records (category);
-CREATE INDEX IF NOT EXISTS idx_records_difficulty ON records (difficulty);
-CREATE INDEX IF NOT EXISTS idx_records_updated_at ON records (updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_records_user_id     ON records (user_id);
+CREATE INDEX IF NOT EXISTS idx_records_group_name  ON records (group_name);
+CREATE INDEX IF NOT EXISTS idx_records_category    ON records (category);
+CREATE INDEX IF NOT EXISTS idx_records_difficulty  ON records (difficulty);
+CREATE INDEX IF NOT EXISTS idx_records_updated_at  ON records (updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_groups_user_id      ON groups (user_id);

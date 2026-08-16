@@ -31,7 +31,7 @@ def main() -> None:
     from backend import history
 
     for slug, rec in records.items():
-        history.upsert_record(slug, rec)
+        history.upsert_record(None, slug, rec)
     for name in groups:
         query("INSERT INTO groups (name) VALUES (%s) ON CONFLICT (name) DO NOTHING", (name,))
 

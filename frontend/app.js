@@ -127,6 +127,195 @@ function toast(message, isError) {
   t._timer = setTimeout(() => t.classList.add("hidden"), 3200);
 }
 
+function modalError(msg) {
+  const err = $("modal-error");
+  err.textContent = msg;
+  err.classList.remove("hidden");
+}
+
+/* ---------- 用户系统（注册/登录/邮箱验证） ---------- */
+
+const TOKEN_KEY = "lc_token";
+const auth = { user: null };
+
+function getToken() { return localStorage.getItem(TOKEN_KEY) || ""; }
+function setToken(t) {
+  if (t) localStorage.setItem(TOKEN_KEY, t);
+  else localStorage.removeItem(TOKEN_KEY);
+}
+
+/* 带登录态的请求（自动附加 Authorization 头） */
+async function apiFetch(path, opts = {}) {
+  const headers = { ...(opts.headers || {}) };
+  const token = getToken();
+  if (token) headers["Authorization"] = "Bearer " + token;
+  return fetch(path, { ...opts, headers });
+}
+
+function handleAuthExpired() {
+  setToken("");
+  auth.user = null;
+  renderUserArea();
+  toast("登录已过期，请重新登录", true);
+}
+
+function renderUserArea() {
+  const el = $("user-area");
+  if (!el) return;
+  if (auth.user) {
+    el.innerHTML = `<div class="ua-inner">
+      <span class="ua-name">👤 ${escapeHtml(auth.user.username)}</span>
+      <button class="ua-action" id="ua-logout">退出</button>
+    </div>`;
+    $("ua-logout").addEventListener("click", logoutUser);
+  } else {
+    el.innerHTML = `<div class="ua-inner">
+      <span class="ua-name" style="color:var(--text-dim)">未登录</span>
+      <span><button class="ua-action" id="ua-login">登录</button> ·
+           <button class="ua-action" id="ua-register">注册</button></span>
+    </div>`;
+    $("ua-login").addEventListener("click", showLoginModal);
+    $("ua-register").addEventListener("click", showRegisterModal);
+  }
+}
+
+function showLoginModal() {
+  openModal(
+    "登录",
+    `<div class="modal-form">
+       <label class="modal-label">邮箱</label>
+       <input id="lf-email" class="modal-input" type="email" spellcheck="false" placeholder="you@example.com" />
+       <label class="modal-label">密码</label>
+       <input id="lf-password" class="modal-input" type="password" placeholder="密码" />
+     </div>`,
+    `<button class="btn btn-small" id="modal-cancel">取消</button>
+     <button class="btn btn-primary btn-small" id="modal-ok">登录</button>`
+  );
+  $("modal-cancel").addEventListener("click", closeModal);
+  $("modal-ok").addEventListener("click", async () => {
+    const email = $("lf-email").value.trim();
+    const password = $("lf-password").value;
+    if (!email || !password) { modalError("请输入邮箱和密码"); return; }
+    try {
+      const resp = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) { modalError(data.detail || "登录失败"); return; }
+      setToken(data.token);
+      auth.user = data.user;
+      closeModal();
+      renderUserArea();
+      loadHistory();
+      loadGroups();
+      toast(`欢迎回来，${data.user.username}`);
+    } catch (err) {
+      modalError("登录失败：" + err.message);
+    }
+  });
+}
+
+function showRegisterModal() {
+  openModal(
+    "注册",
+    `<div class="modal-form">
+       <label class="modal-label">用户名</label>
+       <input id="rf-username" class="modal-input" type="text" spellcheck="false" placeholder="例如：zhangsan" />
+       <label class="modal-label">邮箱</label>
+       <input id="rf-email" class="modal-input" type="email" spellcheck="false" placeholder="you@example.com" />
+       <label class="modal-label">密码（至少 6 位）</label>
+       <input id="rf-password" class="modal-input" type="password" placeholder="密码" />
+       <label class="modal-label">确认密码</label>
+       <input id="rf-password2" class="modal-input" type="password" placeholder="再次输入密码" />
+     </div>`,
+    `<button class="btn btn-small" id="modal-cancel">取消</button>
+     <button class="btn btn-primary btn-small" id="modal-ok">注册</button>`
+  );
+  $("modal-cancel").addEventListener("click", closeModal);
+  $("modal-ok").addEventListener("click", async () => {
+    const username = $("rf-username").value.trim();
+    const email = $("rf-email").value.trim();
+    const password = $("rf-password").value;
+    const password2 = $("rf-password2").value;
+    if (!username || !email || !password) { modalError("请填写完整信息"); return; }
+    if (password !== password2) { modalError("两次输入的密码不一致"); return; }
+    try {
+      const resp = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, email, password }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) { modalError(data.detail || "注册失败"); return; }
+      closeModal();
+      showVerifyInfo(data.dev_verify_url, data.message);
+    } catch (err) {
+      modalError("注册失败：" + err.message);
+    }
+  });
+}
+
+function showVerifyInfo(devUrl, message) {
+  const body = devUrl
+    ? `<div class="modal-msg">${escapeHtml(message)}</div>
+       <div class="modal-msg">当前为开发模式（未配置 SMTP），请点击以下链接完成邮箱验证：</div>
+       <a class="modal-link" href="${escapeHtml(devUrl)}" target="_blank" rel="noopener">${escapeHtml(devUrl)}</a>
+       <div class="modal-msg" style="color:var(--text-dim)">验证完成后返回本页点击「登录」。</div>`
+    : `<div class="modal-msg">${escapeHtml(message)}，请前往邮箱点击验证链接。</div>`;
+  openModal(
+    "注册成功",
+    body,
+    `<button class="btn btn-primary btn-small" id="modal-ok">去登录</button>`
+  );
+  $("modal-ok").addEventListener("click", () => { closeModal(); showLoginModal(); });
+}
+
+async function logoutUser() {
+  try {
+    await fetch("/api/auth/logout", {
+      method: "POST",
+      headers: { "Authorization": "Bearer " + getToken() },
+    });
+  } catch { /* 忽略 */ }
+  setToken("");
+  auth.user = null;
+  renderUserArea();
+  state.historyItems = [];
+  state.groups = [];
+  renderGroupFilter();
+  renderHistoryList([]);
+  hide($("batch-panel"));
+  toast("已退出登录");
+}
+
+async function initAuth() {
+  const token = getToken();
+  if (!token) { renderUserArea(); return; }
+  try {
+    const resp = await apiFetch("/api/auth/me");
+    if (resp.ok) {
+      auth.user = (await resp.json()).user;
+    } else {
+      setToken("");
+    }
+  } catch {
+    setToken("");
+  }
+  renderUserArea();
+  if (auth.user) {
+    loadHistory();
+    loadGroups();
+    updateBatchUI();
+  } else {
+    state.historyItems = [];
+    state.groups = [];
+    renderGroupFilter();
+    renderHistoryList([]);
+  }
+}
+
 function highlightAll(container) {
   if (typeof hljs === "undefined") return;
   container.querySelectorAll("pre code").forEach((c) => {
@@ -304,10 +493,11 @@ function showError(msg) {
 /* ---------- 生成流程 ---------- */
 
 async function submitGenerate(url) {
+  if (!auth.user) { showLoginModal(); return; }
   currentJobId = null;
   showProgress();
   try {
-    const resp = await fetch("/api/generate", {
+    const resp = await apiFetch("/api/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url }),
@@ -325,7 +515,7 @@ async function submitGenerate(url) {
 async function pollJob() {
   if (!currentJobId) return;
   try {
-    const resp = await fetch("/api/jobs/" + currentJobId);
+    const resp = await apiFetch("/api/jobs/" + currentJobId);
     const job = await resp.json();
     if (!resp.ok) throw new Error(job.detail || "查询任务失败");
 
@@ -982,13 +1172,15 @@ function makeHistoryItem(item) {
       </span>
     </div>`;
   li.querySelector(".h-title").addEventListener("click", () => loadRecord(item.slug));
+  // 点击整个格子切换题目（链接/删除按钮除外）
+  li.addEventListener("click", () => loadRecord(item.slug));
   // 点原题链接只跳转，不触发加载记录
   li.querySelector(".h-link").addEventListener("click", (e) => e.stopPropagation());
   li.querySelector(".h-del").addEventListener("click", (e) => {
     e.stopPropagation();
     confirmAction("删除记录", `确定删除「${item.title}」？删除后不可恢复。`, async () => {
       try {
-        const resp = await fetch("/api/history/" + encodeURIComponent(item.slug), { method: "DELETE" });
+        const resp = await apiFetch("/api/history/" + encodeURIComponent(item.slug), { method: "DELETE" });
         if (!resp.ok) {
           const data = await resp.json().catch(() => ({}));
           toast(data.detail || "删除失败", true);
@@ -1062,8 +1254,11 @@ function renderCategoryFilter(items) {
 }
 
 async function loadHistory() {
+  if (!auth.user) return;
   try {
-    const resp = await fetch("/api/history");
+    const resp = await apiFetch("/api/history");
+    if (resp.status === 401) { handleAuthExpired(); return; }
+    if (!resp.ok) return;
     const data = await resp.json();
     state.historyItems = data.items || [];
     renderCategoryFilter(state.historyItems);
@@ -1075,6 +1270,7 @@ async function loadHistory() {
 }
 
 async function loadRecord(slug) {
+  if (!auth.user) return; // 未登录时静默跳过（登录后自动加载历史）
   if (state.cache[slug]) {
     renderResult(state.cache[slug]);
     showResult();
@@ -1082,7 +1278,7 @@ async function loadRecord(slug) {
     return;
   }
   try {
-    const resp = await fetch("/api/history/" + encodeURIComponent(slug));
+    const resp = await apiFetch("/api/history/" + encodeURIComponent(slug));
     if (!resp.ok) throw new Error("记录不存在");
     const record = await resp.json();
     renderResult(record);
@@ -1096,8 +1292,11 @@ async function loadRecord(slug) {
 /* ---------- 分组 ---------- */
 
 async function loadGroups() {
+  if (!auth.user) return;
   try {
-    const resp = await fetch("/api/groups");
+    const resp = await apiFetch("/api/groups");
+    if (resp.status === 401) { handleAuthExpired(); return; }
+    if (!resp.ok) return;
     const data = await resp.json();
     state.groups = data.groups || [];
     renderGroupFilter();
@@ -1138,7 +1337,7 @@ function populateGroupSelect() {
 async function createGroup() {
   promptText("新建分组", "输入分组名称", "", async (name) => {
     try {
-      const resp = await fetch("/api/groups", {
+      const resp = await apiFetch("/api/groups", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
@@ -1178,7 +1377,7 @@ async function startBatch() {
     `将批量生成 ${urls.length} 道题（每题约 30~60 秒，可随时停止），归入分组「${group || "未分组"}」。确定开始？`,
     async () => {
       try {
-        const resp = await fetch("/api/batch/start", {
+        const resp = await apiFetch("/api/batch/start", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ urls, group }),
@@ -1261,6 +1460,17 @@ function init() {
     try { marked.setOptions({ breaks: true, gfm: true }); } catch (e) {}
   }
 
+  // 主题：暗夜/白日（本地持久化）
+  const savedTheme = localStorage.getItem("lc_theme") || "dark";
+  document.documentElement.dataset.theme = savedTheme;
+  $("btn-theme").textContent = savedTheme === "dark" ? "🌙" : "☀️";
+  $("btn-theme").addEventListener("click", () => {
+    const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    localStorage.setItem("lc_theme", next);
+    $("btn-theme").textContent = next === "dark" ? "🌙" : "☀️";
+  });
+
   $("btn-generate").addEventListener("click", () => {
     const url = $("url-input").value.trim();
     if (!url) {
@@ -1340,7 +1550,7 @@ function init() {
 
   loadHistory();
   loadGroups();
-  updateBatchUI();  // 若服务端有批量任务在跑，恢复进度显示
+  initAuth();  // 认证初始化：恢复登录态并加载数据
 
   // ?slug= 深链：直接加载历史记录
   const params = new URLSearchParams(location.search);

@@ -855,3 +855,62 @@ mark {
   max-width: 80vw;
 }
 .toast.toast-error { background: #b91c1c; }
+
+/* ---------- 白天主题（默认暗夜，html[data-theme="light"] 切换） ---------- */
+[data-theme="light"] {
+  --bg: #f1f5f9;
+  --bg-sidebar: #e2e8f0;
+  --bg-panel: #ffffff;
+  --bg-input: #f8fafc;
+  --border: #cbd5e1;
+  --text: #0f172a;
+  --text-dim: #64748b;
+  --accent: #2563eb;
+  --accent-hover: #3b82f6;
+  --green: #16a34a;
+  --yellow: #d97706;
+  --red: #dc2626;
+}
+[data-theme="light"] .wt-cell { background: #e2e8f0; border-color: #cbd5e1; }
+[data-theme="light"] .wt-map th { background: #e2e8f0; }
+[data-theme="light"] .wt-cell.hl { background: rgba(220, 38, 38, 0.18); }
+[data-theme="light"] .code-copy, [data-theme="light"] .btn-small { background: #e2e8f0; color: #334155; }
+[data-theme="light"] .code-copy:hover, [data-theme="light"] .btn-small:hover { background: #cbd5e1; }
+[data-theme="light"] .mermaid-container { background: #ffffff; }
+[data-theme="light"] .progress-spinner { border-color: #cbd5e1; border-top-color: var(--accent); }
+[data-theme="light"] .cat-chip { background: #ffffff; }
+[data-theme="light"] .h-diff, [data-theme="light"] .badge { color: #fff; }
+[data-theme="light"] .wt-note { background: rgba(22, 163, 74, 0.08); }
+
+/* 主题切换按钮 */
+.btn-theme {
+  margin-left: auto;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-dim);
+  font-size: 15px;
+  padding: 4px 9px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-theme:hover { border-color: var(--accent); color: var(--accent); }
+
+/* 用户区 */
+.user-area { margin-bottom: 16px; font-size: 13px; }
+.user-area .ua-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.user-area .ua-name { color: var(--text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-area .ua-action { color: var(--accent); cursor: pointer; background: none; border: none; font-size: 13px; padding: 0; }
+.user-area .ua-action:hover { text-decoration: underline; }
+
+/* ---------- 认证表单 ---------- */
+.modal-form .modal-label { display: block; font-size: 12px; color: var(--text-dim); margin: 8px 0 4px; }
+.modal-link { display: block; word-break: break-all; color: var(--accent); font-size: 13px; margin: 6px 0; }
