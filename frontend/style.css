@@ -51,6 +51,15 @@ body {
   font-weight: 600;
 }
 .btn-primary:hover { background: var(--accent-hover); }
+/* 确认类按钮：btn-primary 与 btn-small 同用时保持强调色，不被 .btn-small 覆盖 */
+.btn-primary.btn-small,
+.btn-primary.btn-small:hover,
+.btn-primary.btn-small:active,
+.btn-primary.btn-small:focus {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
 .btn-block { width: 100%; margin-bottom: 20px; }
 .btn-small { padding: 6px 12px; font-size: 12px; background: #334155; color: var(--text); }
 .btn-small:hover { background: #475569; }

@@ -1207,7 +1207,8 @@ function wtTogglePlay() {
 async function loadTemplates() {
   if (state.templates) return state.templates;
   try {
-    const resp = await fetch("/api/templates");
+    // 必须带登录态：未登录只返回内置模板，登录后才会包含自己的自定义模板
+    const resp = await apiFetch("/api/templates");
     state.templates = (await resp.json()).templates || [];
   } catch {
     state.templates = [];
@@ -1382,8 +1383,15 @@ function showTemplateEditor(tpl) {
       closeModal();
       state.templates = null; // 强制重新拉取
       await loadTemplates();
+      if (!isEdit) {
+        // 新建后：清空搜索、自动选中该分类，让新模板立刻可见（顶部出现对应分类按钮）
+        state.tplQuery = "";
+        state.tplFilter = body.category;
+      }
       renderTplTags(state.templates);
       renderTemplatesList(state.templates);
+      const search = $("tpl-search");
+      if (search) search.value = state.tplQuery;
       toast(isEdit ? "模板已更新" : "模板已创建");
     } catch (err) {
       modalError("保存失败：" + err.message);
