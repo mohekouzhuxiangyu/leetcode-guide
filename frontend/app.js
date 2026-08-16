@@ -46,6 +46,37 @@ async function copyText(text) {
 function show(el) { el.classList.remove("hidden"); }
 function hide(el) { el.classList.add("hidden"); }
 
+/* 防御性渲染：即使某个第三方库加载失败，页面也不报错、尽量降级展示 */
+function highlightAll(container) {
+  if (typeof hljs === "undefined") return; // 高亮库不可用则跳过
+  container.querySelectorAll("pre code").forEach((c) => {
+    try { hljs.highlightElement(c); } catch (e) { /* 单个代码块高亮失败不影响整体 */ }
+  });
+}
+
+function renderMarkdown(text) {
+  if (typeof marked !== "undefined") {
+    try { return marked.parse(text); } catch (e) { /* 解析失败降级为纯文本 */ }
+  }
+  return `<pre style="white-space:pre-wrap;word-break:break-word;">${escapeHtml(text)}</pre>`;
+}
+
+async function renderMermaidGraph(container, code) {
+  if (typeof mermaid === "undefined") {
+    container.innerHTML = `<div class="mermaid-error">流程图渲染库未加载，以下是 Mermaid 源码：</div><pre style="text-align:left;white-space:pre-wrap;">${escapeHtml(code)}</pre>`;
+    return;
+  }
+  mermaidSeq += 1;
+  const id = "mermaid-graph-" + mermaidSeq + "-" + Date.now();
+  try {
+    const { svg } = await mermaid.render(id, code);
+    container.innerHTML = svg;
+    container.querySelector("svg").style.maxWidth = "100%";
+  } catch (err) {
+    container.innerHTML = `<div class="mermaid-error">流程图渲染失败：${escapeHtml(err.message)}<br/>可点击下方“查看 Mermaid 源码”复制内容。</div>`;
+  }
+}
+
 /* ---------- 页面状态切换 ---------- */
 
 function showInputOnly() {
@@ -130,8 +161,13 @@ async function pollJob() {
       clearInterval(pollTimer);
       pollTimer = null;
       currentJobId = null;
-      renderResult(job.result);
-      showResult();
+      try {
+        renderResult(job.result);
+        showResult();
+      } catch (err) {
+        console.error("渲染结果失败:", err);
+        showError("渲染结果失败：" + err.message);
+      }
     } else if (job.status === "error") {
       clearInterval(pollTimer);
       pollTimer = null;
@@ -199,7 +235,7 @@ function renderProblemTab(problem, record) {
     }
   }
   el.innerHTML = html;
-  el.querySelectorAll("pre code").forEach((c) => hljs.highlightElement(c));
+  highlightAll(el);
 }
 
 function renderAnalysisTab(analysis) {
@@ -208,9 +244,8 @@ function renderAnalysisTab(analysis) {
     el.innerHTML = `<p class="problem-empty">算法解析生成失败。</p>`;
     return;
   }
-  el.innerHTML = marked.parse(analysis);
-  // 代码高亮
-  el.querySelectorAll("pre code").forEach((c) => hljs.highlightElement(c));
+  el.innerHTML = renderMarkdown(analysis);
+  highlightAll(el);
 }
 
 function renderFlowchartTab(mermaidCode) {
@@ -222,17 +257,7 @@ function renderFlowchartTab(mermaidCode) {
     container.innerHTML = `<div class="mermaid-error">流程图生成失败。</div>`;
     return;
   }
-  mermaidSeq += 1;
-  const id = "mermaid-graph-" + mermaidSeq + "-" + Date.now();
-  mermaid
-    .render(id, code)
-    .then(({ svg }) => {
-      container.innerHTML = svg;
-      container.querySelector("svg").style.maxWidth = "100%";
-    })
-    .catch((err) => {
-      container.innerHTML = `<div class="mermaid-error">流程图渲染失败：${escapeHtml(err.message)}<br/>可点击下方“查看 Mermaid 源码”复制内容。</div>`;
-    });
+  renderMermaidGraph(container, code);
 }
 
 function renderCodeTab(codeMap) {
@@ -271,7 +296,7 @@ function showCodeLang(lang) {
       <button class="code-copy" data-copy>📋 复制</button>
       <pre><code class="language-${alias.hl}">${escapeHtml(code)}</code></pre>
     </div>`;
-  container.querySelector("pre code") && hljs.highlightElement(container.querySelector("pre code"));
+  highlightAll(container);
   container.querySelector("[data-copy]").addEventListener("click", async (e) => {
     const ok = await copyText(code);
     e.target.textContent = ok ? "✅ 已复制" : "❌ 复制失败";
