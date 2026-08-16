@@ -34,25 +34,42 @@ def _summary_from_row(r) -> dict:
     }
 
 
-def list_records(user_id: int) -> list[dict]:
-    """返回当前用户可见的题目列表（共享目录 + 自己的记录），按更新时间倒序。"""
-    rows = query(
-        """SELECT slug, title, difficulty, tags, category, group_name, url, user_id, created_at, updated_at
-           FROM records
-           WHERE user_id = %s OR user_id IS NULL
-           ORDER BY updated_at DESC""",
-        (user_id,),
-        fetch="all",
-    )
+def list_records(user_id: Optional[int]) -> list[dict]:
+    """返回当前用户可见的题目列表。
+
+    user_id 为 None（游客）时只返回共享目录（user_id IS NULL）。
+    """
+    if user_id is None:
+        rows = query(
+            """SELECT slug, title, difficulty, tags, category, group_name, url, user_id, created_at, updated_at
+               FROM records WHERE user_id IS NULL ORDER BY updated_at DESC""",
+            fetch="all",
+        )
+    else:
+        rows = query(
+            """SELECT slug, title, difficulty, tags, category, group_name, url, user_id, created_at, updated_at
+               FROM records
+               WHERE user_id = %s OR user_id IS NULL
+               ORDER BY updated_at DESC""",
+            (user_id,),
+            fetch="all",
+        )
     return [_summary_from_row(r) for r in rows]
 
 
-def get_record(user_id: int, slug: str) -> Optional[dict]:
-    row = query(
-        "SELECT * FROM records WHERE (user_id = %s OR user_id IS NULL) AND slug = %s",
-        (user_id, slug),
-        fetch="one",
-    )
+def get_record(user_id: Optional[int], slug: str) -> Optional[dict]:
+    if user_id is None:
+        row = query(
+            "SELECT * FROM records WHERE user_id IS NULL AND slug = %s",
+            (slug,),
+            fetch="one",
+        )
+    else:
+        row = query(
+            "SELECT * FROM records WHERE (user_id = %s OR user_id IS NULL) AND slug = %s",
+            (user_id, slug),
+            fetch="one",
+        )
     if row is None:
         return None
     return {
@@ -163,29 +180,45 @@ def delete_record(user_id: int, slug: str) -> bool:
 
 # ---------------- 分组 ----------------
 
-def list_groups(user_id: int) -> list[dict]:
-    """返回分组列表（共享分组 + 用户分组），带题数。"""
-    explicit = [
-        r["name"]
-        for r in query(
-            "SELECT name FROM groups WHERE user_id = %s OR user_id IS NULL ORDER BY name",
+def list_groups(user_id: Optional[int]) -> list[dict]:
+    """返回分组列表（共享分组 + 用户分组），带题数。游客只看到共享分组。"""
+    if user_id is None:
+        explicit = [
+            r["name"]
+            for r in query("SELECT name FROM groups WHERE user_id IS NULL ORDER BY name", fetch="all")
+        ]
+        count_rows = query(
+            """SELECT group_name, COUNT(*) AS c FROM records
+               WHERE user_id IS NULL AND group_name <> '' GROUP BY group_name""",
+            fetch="all",
+        )
+        ungrouped_row = query(
+            """SELECT COUNT(*) AS c FROM records
+               WHERE user_id IS NULL AND (group_name = '' OR group_name IS NULL)""",
+            fetch="one",
+        )
+    else:
+        explicit = [
+            r["name"]
+            for r in query(
+                "SELECT name FROM groups WHERE user_id = %s OR user_id IS NULL ORDER BY name",
+                (user_id,),
+                fetch="all",
+            )
+        ]
+        count_rows = query(
+            """SELECT group_name, COUNT(*) AS c FROM records
+               WHERE (user_id = %s OR user_id IS NULL) AND group_name <> '' GROUP BY group_name""",
             (user_id,),
             fetch="all",
         )
-    ]
-    count_rows = query(
-        """SELECT group_name, COUNT(*) AS c FROM records
-           WHERE (user_id = %s OR user_id IS NULL) AND group_name <> '' GROUP BY group_name""",
-        (user_id,),
-        fetch="all",
-    )
+        ungrouped_row = query(
+            """SELECT COUNT(*) AS c FROM records
+               WHERE (user_id = %s OR user_id IS NULL) AND (group_name = '' OR group_name IS NULL)""",
+            (user_id,),
+            fetch="one",
+        )
     counts = {r["group_name"]: r["c"] for r in count_rows}
-    ungrouped_row = query(
-        """SELECT COUNT(*) AS c FROM records
-           WHERE (user_id = %s OR user_id IS NULL) AND (group_name = '' OR group_name IS NULL)""",
-        (user_id,),
-        fetch="one",
-    )
     ungrouped = ungrouped_row["c"] if ungrouped_row else 0
     names = list(dict.fromkeys(explicit + list(counts.keys())))
     result = [{"name": n, "count": counts.get(n, 0), "explicit": n in explicit} for n in names]

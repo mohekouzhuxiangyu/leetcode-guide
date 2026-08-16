@@ -188,7 +188,7 @@ function renderUserArea() {
     $("ua-logout").addEventListener("click", logoutUser);
   } else {
     el.innerHTML = `<div class="ua-inner">
-      <span class="ua-name" style="color:var(--text-dim)">未登录</span>
+      <span class="ua-name" style="color:var(--text-dim)">👤 游客（可浏览 hot100）</span>
       <span><button class="ua-action" id="ua-login">登录</button> ·
            <button class="ua-action" id="ua-register">注册</button></span>
     </div>`;
@@ -360,22 +360,25 @@ async function logoutUser() {
 
 async function initAuth() {
   const token = getToken();
-  if (!token) { renderUserArea(); return; }
-  try {
-    const resp = await apiFetch("/api/auth/me");
-    if (resp.ok) {
-      auth.user = (await resp.json()).user;
-    } else {
+  if (!token) { renderUserArea(); }
+  else {
+    try {
+      const resp = await apiFetch("/api/auth/me");
+      if (resp.ok) {
+        auth.user = (await resp.json()).user;
+      } else {
+        setToken("");
+      }
+    } catch {
       setToken("");
     }
-  } catch {
-    setToken("");
+    renderUserArea();
   }
-  renderUserArea();
+  // 游客也能浏览共享 hot100（后端只返回共享目录）
+  loadHistory();
+  loadGroups();
+  updateBatchUI();
   if (auth.user) {
-    loadHistory();
-    loadGroups();
-    updateBatchUI();
     // 支付宝/模拟支付跳回 ?vip=ok：刷新 VIP 状态
     const qs = new URLSearchParams(location.search);
     if (qs.get("vip") === "ok") {
@@ -387,11 +390,6 @@ async function initAuth() {
       }
       window.history.replaceState(null, "", location.pathname);
     }
-  } else {
-    state.historyItems = [];
-    state.groups = [];
-    renderGroupFilter();
-    renderHistoryList([]);
   }
 }
 
@@ -1407,7 +1405,6 @@ function renderCategoryFilter(items) {
 }
 
 async function loadHistory() {
-  if (!auth.user) return;
   try {
     const resp = await apiFetch("/api/history");
     if (resp.status === 401) { handleAuthExpired(); return; }
@@ -1423,7 +1420,6 @@ async function loadHistory() {
 }
 
 async function loadRecord(slug) {
-  if (!auth.user) return; // 未登录时静默跳过（登录后自动加载历史）
   if (state.cache[slug]) {
     renderResult(state.cache[slug]);
     showResult();
@@ -1445,7 +1441,6 @@ async function loadRecord(slug) {
 /* ---------- 分组 ---------- */
 
 async function loadGroups() {
-  if (!auth.user) return;
   try {
     const resp = await apiFetch("/api/groups");
     if (resp.status === 401) { handleAuthExpired(); return; }

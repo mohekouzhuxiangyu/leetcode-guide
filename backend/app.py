@@ -44,6 +44,16 @@ def get_current_user(authorization: Optional[str] = Header(default=None)) -> dic
     return user
 
 
+def get_current_user_optional(authorization: Optional[str] = Header(default=None)) -> Optional[dict]:
+    """可选的当前用户：未登录返回 None（游客，可浏览共享 hot100）。"""
+    if not authorization:
+        return None
+    token = authorization.removeprefix("Bearer ").strip()
+    if not token:
+        return None
+    return auth.get_user_by_token(token)
+
+
 def require_vip(user: dict = Depends(get_current_user)) -> dict:
     """增删改等写操作需要 VIP 权限。"""
     row = auth.get_user_row(user["id"])
@@ -356,8 +366,8 @@ class MoveRequest(BaseModel):
 
 
 @app.get("/api/groups")
-async def list_groups_api(user: dict = Depends(get_current_user)) -> dict:
-    return {"groups": history.list_groups(user["id"])}
+async def list_groups_api(user: Optional[dict] = Depends(get_current_user_optional)) -> dict:
+    return {"groups": history.list_groups(user["id"] if user else None)}
 
 
 @app.post("/api/groups")
@@ -395,8 +405,10 @@ class NoteRequest(BaseModel):
 
 
 @app.get("/api/notes/{slug}")
-async def get_note(slug: str, user: dict = Depends(get_current_user)) -> dict:
-    """读取自己的题目心得（免费）。"""
+async def get_note(slug: str, user: Optional[dict] = Depends(get_current_user_optional)) -> dict:
+    """读取自己的题目心得（免费）；游客返回空。"""
+    if user is None:
+        return {"slug": slug, "content": "", "updated_at": None}
     row = query(
         "SELECT content, updated_at FROM user_notes WHERE user_id = %s AND slug = %s",
         (user["id"], slug),
@@ -423,13 +435,13 @@ async def save_note(slug: str, req: NoteRequest, user: dict = Depends(require_vi
 # ---------------- 历史记录（按用户隔离） ----------------
 
 @app.get("/api/history")
-async def list_history(user: dict = Depends(get_current_user)) -> dict:
-    return {"items": history.list_records(user["id"])}
+async def list_history(user: Optional[dict] = Depends(get_current_user_optional)) -> dict:
+    return {"items": history.list_records(user["id"] if user else None)}
 
 
 @app.get("/api/history/{slug}")
-async def get_history(slug: str, user: dict = Depends(get_current_user)) -> dict:
-    rec = history.get_record(user["id"], slug)
+async def get_history(slug: str, user: Optional[dict] = Depends(get_current_user_optional)) -> dict:
+    rec = history.get_record(user["id"] if user else None, slug)
     if rec is None:
         raise HTTPException(status_code=404, detail="记录不存在")
     return rec
