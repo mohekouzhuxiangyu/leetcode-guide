@@ -138,6 +138,20 @@ def html_to_text(html: str) -> str:
     return text.strip()
 
 
+def _extract_images(html: str) -> list:
+    """从题目 HTML 中提取图片 URL（去重、补全 https）。"""
+    urls = re.findall(r'<img[^>]+src=["\']([^"\']+)["\']', html or "")
+    out = []
+    for u in urls:
+        if u.startswith("//"):
+            u = "https:" + u
+        elif u.startswith("/"):
+            u = "https://leetcode.com" + u
+        if u and u not in out:
+            out.append(u)
+    return out
+
+
 def _query_graphql(endpoint: str, slug: str) -> Optional[dict]:
     payload = {"query": QUESTION_QUERY, "variables": {"titleSlug": slug}}
     resp = requests.post(endpoint, json=payload, headers=HEADERS, timeout=20)
@@ -215,6 +229,7 @@ def _normalize(q: dict) -> dict:
         "difficulty": q.get("difficulty", "Medium"),
         "tags": [t.get("name") for t in (q.get("topicTags") or [])],
         "content_text": html_to_text(q.get("content", "")),
+        "images": _extract_images(q.get("content", "")),
         "code_snippets": snippets,
         "stats": {
             "totalAcceptedRaw": stats.get("totalAcceptedRaw"),

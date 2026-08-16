@@ -542,7 +542,6 @@ html { overflow-y: scroll; }
   border: 1px solid var(--border);
   border-radius: 10px;
   margin-bottom: 14px;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
 }
 .ps-toggle {
   width: 100%;
@@ -1114,4 +1113,14 @@ mark {
   padding: 5px 12px;
   font-size: 13px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+/* ---------- 原题插图 ---------- */
+.problem-images { margin: 12px 0; }
+.problem-image { margin: 10px 0; }
+.problem-image img {
+  max-width: 100%;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #fff;
 }

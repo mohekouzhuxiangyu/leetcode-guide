@@ -773,6 +773,14 @@ function renderProblemTab(problem, record) {
     const { description, examples, constraints } = parseProblemSections(zh || content);
     // 描述与约束支持 Markdown（反引号/加粗/列表正确渲染），示例保持代码块
     if (description) html += `<div class="problem-desc">${renderMarkdown(description)}</div>`;
+    // 原题插图
+    if (Array.isArray(problem.images) && problem.images.length) {
+      html += `<div class="problem-images">`;
+      problem.images.forEach((src) => {
+        html += `<div class="problem-image"><img src="${escapeHtml(src)}" alt="原题插图" loading="lazy" referrerpolicy="no-referrer" /></div>`;
+      });
+      html += `</div>`;
+    }
     if (examples.length) {
       html += `<h3 class="sec-title">📌 示例</h3>`;
       for (const ex of examples) {
