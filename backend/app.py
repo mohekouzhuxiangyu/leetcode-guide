@@ -124,6 +124,25 @@ async def logout(authorization: Optional[str] = Header(default=None)) -> dict:
     return {"ok": True}
 
 
+class ChangePasswordRequest(BaseModel):
+    old_password: str = ""
+    new_password: str = ""
+
+
+@app.post("/api/auth/change-password")
+async def change_password(
+    req: ChangePasswordRequest,
+    authorization: Optional[str] = Header(default=None),
+    user: dict = Depends(get_current_user),
+) -> dict:
+    """修改密码：校验原密码，更新哈希，并使其他会话失效。"""
+    token = authorization.removeprefix("Bearer ").strip() if authorization else ""
+    err = auth.change_password(user["id"], req.old_password or "", req.new_password or "", keep_token=token)
+    if err:
+        raise HTTPException(status_code=400, detail=err)
+    return {"ok": True, "detail": "密码修改成功"}
+
+
 @app.get("/api/auth/me")
 async def me(user: dict = Depends(get_current_user)) -> dict:
     return {"user": user}

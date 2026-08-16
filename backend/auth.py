@@ -12,6 +12,7 @@ import smtplib
 import ssl
 from email.message import EmailMessage
 from pathlib import Path
+from typing import Optional
 
 from dotenv import load_dotenv
 
@@ -46,6 +47,26 @@ def verify_password(password: str, stored: str) -> bool:
         return False
     calc = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), _PBKDF2_ITERATIONS).hex()
     return secrets.compare_digest(calc, digest)
+
+
+def change_password(user_id: int, old_password: str, new_password: str, keep_token: str = "") -> Optional[str]:
+    """修改密码：返回 None=成功，否则返回错误信息。
+
+    成功后使该用户的其他会话失效（保留当前会话 keep_token）。
+    """
+    if len(new_password or "") < 6:
+        return "新密码至少 6 位"
+    row = query("SELECT password_hash FROM users WHERE id = %s", (user_id,), fetch="one")
+    if not row:
+        return "用户不存在"
+    if not verify_password(old_password or "", row["password_hash"]):
+        return "原密码不正确"
+    query("UPDATE users SET password_hash = %s WHERE id = %s", (hash_password(new_password), user_id))
+    if keep_token:
+        query("DELETE FROM sessions WHERE user_id = %s AND token <> %s", (user_id, keep_token))
+    else:
+        query("DELETE FROM sessions WHERE user_id = %s", (user_id,))
+    return None
 
 
 # ---------------- 注册 / 验证 / 登录 ----------------

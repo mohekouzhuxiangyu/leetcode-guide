@@ -198,6 +198,8 @@ function renderUserArea() {
         ${upgradeBtn}
         ${adminBtn}
         <span class="ua-divider"></span>
+        <button class="ua-btn" data-act="change-password" title="修改密码">🔑 修改密码</button>
+        <span class="ua-divider"></span>
         <button class="ua-btn ua-btn-danger" data-act="logout">退出</button>
       </div>`;
     } else {
@@ -406,6 +408,45 @@ async function setUserVip(userId, vip) {
       }
     }
   );
+}
+
+/* 修改密码 */
+function showChangePasswordModal() {
+  openModal(
+    "🔑 修改密码",
+    `<div class="modal-form">
+       <label class="modal-label">原密码</label>
+       <input id="cp-old" class="modal-input" type="password" placeholder="当前密码" />
+       <label class="modal-label">新密码（至少 6 位）</label>
+       <input id="cp-new" class="modal-input" type="password" placeholder="新密码" />
+       <label class="modal-label">确认新密码</label>
+       <input id="cp-new2" class="modal-input" type="password" placeholder="再次输入新密码" />
+     </div>`,
+    `<button class="btn btn-small" id="modal-cancel">取消</button>
+     <button class="btn btn-primary btn-small" id="modal-ok">确认修改</button>`
+  );
+  $("modal-cancel").addEventListener("click", closeModal);
+  $("modal-ok").addEventListener("click", async () => {
+    const oldPwd = $("cp-old").value;
+    const newPwd = $("cp-new").value;
+    const newPwd2 = $("cp-new2").value;
+    if (!oldPwd || !newPwd) { modalError("请填写完整"); return; }
+    if (newPwd.length < 6) { modalError("新密码至少 6 位"); return; }
+    if (newPwd !== newPwd2) { modalError("两次输入的新密码不一致"); return; }
+    try {
+      const resp = await apiFetch("/api/auth/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ old_password: oldPwd, new_password: newPwd }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) { modalError(data.detail || "修改失败"); return; }
+      closeModal();
+      toast("✅ 密码修改成功，其他设备已退出登录");
+    } catch (err) {
+      modalError("修改失败：" + err.message);
+    }
+  });
 }
 
 function showLoginModal() {
@@ -2191,6 +2232,7 @@ function init() {
       else if (act === "logout") logoutUser();
       else if (act === "vip") openVipPanel();
       else if (act === "admin") showGrantModal();
+      else if (act === "change-password") showChangePasswordModal();
     });
   });
 
