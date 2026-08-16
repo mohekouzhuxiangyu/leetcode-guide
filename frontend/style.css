@@ -21,10 +21,8 @@ body {
   height: 100vh;
   position: sticky;
   top: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden; /* 整个侧栏不滚动，只有题目列表滚动 */
   /* 预留滚动条位置：内容多少都不改变可视宽度 */
-  scrollbar-gutter: stable;
 }
 
 .brand { display: flex; gap: 10px; align-items: center; margin-bottom: 18px; }
@@ -63,7 +61,17 @@ body {
   margin-bottom: 8px;
   font-weight: 600;
 }
-.history-list { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.history-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
+}
 .history-empty { color: var(--text-dim); font-size: 13px; padding: 8px 4px; }
 .history-item {
   background: var(--bg-panel);
@@ -442,7 +450,8 @@ html { overflow-y: scroll; }
 
 @media (max-width: 860px) {
   body { flex-direction: column; }
-  #sidebar { width: 100%; min-width: 0; height: auto; position: static; }
+  #sidebar { width: 100%; min-width: 0; height: auto; position: static; overflow-y: auto; }
+  .history-list { flex: none; overflow-y: visible; max-height: 50vh; }
   #main { padding: 20px 16px; }
   .input-row { flex-direction: column; }
 }
