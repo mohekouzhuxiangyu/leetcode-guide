@@ -929,7 +929,13 @@ mark {
 }
 .ua-btn:hover { border-color: var(--accent); background: rgba(79, 140, 255, 0.1); }
 .ua-btn-primary { background: var(--accent); color: #fff; font-weight: 600; }
-.ua-btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.ua-btn-primary:hover,
+.ua-btn-primary:active,
+.ua-btn-primary:focus {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: #fff;
+}
 .ua-btn-danger { color: var(--text-dim); }
 .ua-btn-danger:hover { color: var(--red); border-color: var(--red); background: rgba(220, 38, 38, 0.08); }
 
