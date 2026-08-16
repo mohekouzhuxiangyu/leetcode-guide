@@ -21,6 +21,7 @@ const state = {
   renderedTabs: {},
   cache: {},
   categoryFilter: "全部",
+  searchQuery: "",
   historyItems: [],
   templates: null,
   hot100: null,
@@ -828,13 +829,47 @@ function setActiveHistory(slug) {
   });
 }
 
+/* 标题中高亮搜索关键词（安全转义后包裹 <mark>） */
+function highlightTitle(title, query) {
+  if (!query) return escapeHtml(title);
+  const lower = title.toLowerCase();
+  const q = query.toLowerCase();
+  let html = "";
+  let i = 0;
+  let idx = lower.indexOf(q);
+  while (idx !== -1 && i < title.length) {
+    html += escapeHtml(title.slice(i, idx));
+    html += `<mark>${escapeHtml(title.slice(idx, idx + q.length))}</mark>`;
+    i = idx + q.length;
+    idx = lower.indexOf(q, i);
+  }
+  html += escapeHtml(title.slice(i));
+  return html;
+}
+
+/* 按分类 + 搜索词过滤历史记录 */
+function filterHistoryItems(items) {
+  let filtered = items;
+  if (state.categoryFilter !== "全部") {
+    filtered = filtered.filter((i) => (i.category || "其他") === state.categoryFilter);
+  }
+  const q = state.searchQuery.trim().toLowerCase();
+  if (q) {
+    filtered = filtered.filter((i) => {
+      const hay = `${i.title} ${i.slug} ${i.category || ""} ${(i.tags || []).join(" ")}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }
+  return filtered;
+}
+
 function makeHistoryItem(item) {
   const li = document.createElement("li");
   li.className = "history-item";
   li.dataset.slug = item.slug;
   const linkUrl = item.url || "https://leetcode.com/problems/" + item.slug + "/";
   li.innerHTML = `
-    <div class="h-title">${escapeHtml(item.title)}</div>
+    <div class="h-title">${highlightTitle(item.title, state.searchQuery.trim())}</div>
     <div class="h-meta">
       <span>${DIFF_ZH[item.difficulty] || item.difficulty} · ${escapeHtml((item.updated_at || "").slice(0, 16))}</span>
       <span class="h-actions">
@@ -857,14 +892,15 @@ function makeHistoryItem(item) {
 
 function renderHistoryList(items) {
   const list = $("history-list");
-  const filter = state.categoryFilter;
-  const filtered = filter === "全部" ? items : items.filter((i) => (i.category || "其他") === filter);
+  const filtered = filterHistoryItems(items);
   if (!filtered.length) {
-    list.innerHTML = `<li class="history-empty">该分类下暂无记录</li>`;
+    list.innerHTML = `<li class="history-empty">${
+      state.searchQuery.trim() ? "没有匹配「" + escapeHtml(state.searchQuery.trim()) + "」的题目" : "该分类下暂无记录"
+    }</li>`;
     return;
   }
   list.innerHTML = "";
-  if (filter === "全部") {
+  if (state.categoryFilter === "全部") {
     const groups = {};
     for (const it of filtered) {
       const c = it.category || "其他";
@@ -1097,6 +1133,21 @@ function init() {
       $("url-input").value = el.dataset.url;
       submitGenerate(el.dataset.url);
     });
+  });
+
+  // 历史题目搜索（实时过滤，支持 Esc 清空）
+  const searchInput = $("search-input");
+  searchInput.addEventListener("input", () => {
+    state.searchQuery = searchInput.value;
+    renderHistoryList(state.historyItems);
+  });
+  searchInput.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      searchInput.value = "";
+      state.searchQuery = "";
+      renderHistoryList(state.historyItems);
+      searchInput.blur();
+    }
   });
 
   loadHistory();
