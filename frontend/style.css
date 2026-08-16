@@ -1051,3 +1051,35 @@ mark {
 [data-theme="light"] #tab-template .code-block pre { background: #0d1117 !important; }
 [data-theme="light"] #tab-template .code-block pre code { color: #e6edf3 !important; }
 [data-theme="light"] #tab-template .code-block pre code.hljs { background: transparent !important; color: inherit !important; }
+
+/* ---------- 白天模式全面对比度修正 ---------- */
+/* 难度筛选 chips：非选中态用深色文字（浅色版本在白底上看不清） */
+[data-theme="light"] .cat-chip.diff-Easy   { color: #15803d; border-color: rgba(22, 163, 74, 0.55); }
+[data-theme="light"] .cat-chip.diff-Medium { color: #b45309; border-color: rgba(217, 119, 6, 0.55); }
+[data-theme="light"] .cat-chip.diff-Hard   { color: #b91c1c; border-color: rgba(220, 38, 38, 0.55); }
+[data-theme="light"] .cat-chip.diff-Easy:hover   { background: rgba(22, 163, 74, 0.10); }
+[data-theme="light"] .cat-chip.diff-Medium:hover { background: rgba(217, 119, 6, 0.10); }
+[data-theme="light"] .cat-chip.diff-Hard:hover   { background: rgba(220, 38, 38, 0.10); }
+
+/* 主按钮：所有状态（含点击/聚焦）保持白字，避免文字与背景同色 */
+[data-theme="light"] .btn-primary,
+[data-theme="light"] .btn-primary:hover,
+[data-theme="light"] .btn-primary:active,
+[data-theme="light"] .btn-primary:focus { color: #fff; }
+
+/* 绿色/红色强调按钮与悬停态：保持白字 */
+[data-theme="light"] .btn-start,
+[data-theme="light"] .btn-start:hover,
+[data-theme="light"] .btn-stop,
+[data-theme="light"] .btn-stop:hover { color: #fff; }
+
+/* 次要小按钮 hover 不再变深底（深底深字问题） */
+[data-theme="light"] .btn-small:hover,
+[data-theme="light"] .code-copy:hover { background: #cbd5e1; color: #334155; }
+
+/* 侧栏杂项控件在白天模式下的文字颜色明确化 */
+[data-theme="light"] .btn-mini { color: var(--text-dim); border-color: var(--border); }
+[data-theme="light"] .ua-action { color: var(--accent); }
+[data-theme="light"] .btn-theme { color: var(--text-dim); }
+[data-theme="light"] .h-del { color: var(--text-dim); }
+[data-theme="light"] .history-group { color: #1d4ed8; }
