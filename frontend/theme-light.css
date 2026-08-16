@@ -48,7 +48,7 @@
 .code-block pre code.hljs,
 .tpl-card pre code.hljs,
 #tab-template .code-block pre code.hljs,
-.note-preview pre code.hljs { background: transparent; color: inherit; }
+.note-preview pre code.hljs { background: transparent; }
 
 /* 难度筛选 chips：非选中态用深色文字 */
 .cat-chip.diff-Easy   { color: #15803d; border-color: rgba(22, 163, 74, 0.55); }

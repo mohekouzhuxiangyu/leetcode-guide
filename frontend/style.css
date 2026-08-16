@@ -426,7 +426,7 @@ html { overflow-y: scroll; }
   overflow-y: auto;
 }
 .code-block pre code { color: #e6edf3; font-family: "SF Mono", Menlo, Consolas, monospace; }
-.code-block pre code.hljs { background: transparent; color: inherit; }
+.code-block pre code.hljs { background: transparent; }
 .code-copy {
   position: absolute;
   top: 8px;
@@ -719,7 +719,7 @@ html { overflow-y: scroll; }
   color: #e6edf3;
   font-family: "SF Mono", Menlo, Consolas, monospace;
 }
-.tpl-card pre code.hljs { background: transparent; color: inherit; }
+.tpl-card pre code.hljs { background: transparent; }
 .tpl-header { margin-bottom: 12px; }
 .tpl-header h3 { color: var(--text); }
 .tpl-header h3 { font-size: 17px; margin-bottom: 6px; }
