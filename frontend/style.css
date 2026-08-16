@@ -289,15 +289,37 @@ html { overflow-y: scroll; }
 }
 .problem-example { margin-bottom: 14px; }
 .example-title { font-weight: 600; margin-bottom: 6px; color: var(--text); }
-.problem-example pre {
-  background: var(--bg-input);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px 14px;
-  overflow-x: auto;
-  font-size: 13px;
-  line-height: 1.7;
+.ex-row { display: flex; gap: 10px; align-items: baseline; margin: 4px 0; flex-wrap: wrap; }
+.ex-label {
+  flex: 0 0 36px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent-hover);
+  text-align: right;
 }
+.ex-row code {
+  background: rgba(79, 140, 255, 0.12);
+  padding: 2px 8px;
+  border-radius: 5px;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 13px;
+  word-break: break-all;
+}
+.ex-row.ex-note {
+  display: block;
+  color: var(--text-dim);
+  font-size: 13px;
+  margin-top: 4px;
+}
+.ps-body p { margin: 6px 0; }
+.ps-body code {
+  background: rgba(79, 140, 255, 0.12);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+.ps-body strong { color: var(--green); }
 .problem-constraints { word-break: break-word; line-height: 1.8; }
 
 /* 算法解析 */

@@ -383,12 +383,12 @@ function renderResult(record) {
   const timeText = record.updated_at || record.created_at || new Date().toLocaleString();
   $("result-time").textContent = `生成于 ${timeText} ${note}`;
 
-  // 固定题目描述（置顶，便于与下方内容对比）
+  // 固定题目描述（置顶，便于与下方内容对比；Markdown 渲染）
   const ps = $("problem-sticky");
   const descRaw = (record.problem_zh || problem.content_text || "").trim();
   if (descRaw) {
     const { description } = parseProblemSections(descRaw);
-    $("ps-body").textContent = description || descRaw;
+    $("ps-body").innerHTML = renderMarkdown(description || descRaw);
     ps.classList.remove("hidden");
     ps.classList.add("open");
   } else {
@@ -400,6 +400,29 @@ function renderResult(record) {
 
   setActiveHistory(record.slug);
   switchTab("problem");
+}
+
+function renderExampleBody(body) {
+  /* 把示例的 输入/输出/解释 行结构化展示，避免糊成一片 */
+  const lines = String(body || "").split("\n");
+  let html = "";
+  for (const ln of lines) {
+    const m = ln.trim().match(/^(输入|输出|解释|说明|Input|Output|Explanation)\s*[:：]\s*(.*)$/);
+    if (m) {
+      const label = m[1];
+      const value = m[2];
+      if (label === "输入" || label === "Input") {
+        html += `<div class="ex-row"><span class="ex-label">输入</span><code>${escapeHtml(value)}</code></div>`;
+      } else if (label === "输出" || label === "Output") {
+        html += `<div class="ex-row"><span class="ex-label">输出</span><code>${escapeHtml(value)}</code></div>`;
+      } else {
+        html += `<div class="ex-row ex-note">${escapeHtml(ln.trim())}</div>`;
+      }
+    } else if (ln.trim()) {
+      html += `<div class="ex-row ex-note">${escapeHtml(ln.trim())}</div>`;
+    }
+  }
+  return html;
 }
 
 function renderProblemTab(problem, record) {
@@ -416,7 +439,7 @@ function renderProblemTab(problem, record) {
       html += `<h3 class="sec-title">📌 示例</h3>`;
       for (const ex of examples) {
         html += `<div class="problem-example"><div class="example-title">${escapeHtml(ex.title)}</div>`;
-        if (ex.body) html += `<pre>${escapeHtml(ex.body)}</pre>`;
+        if (ex.body) html += renderExampleBody(ex.body);
         html += `</div>`;
       }
     }
