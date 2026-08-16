@@ -22,6 +22,7 @@ const state = {
   cache: {},
   categoryFilter: "全部",
   groupFilter: "全部",
+  difficultyFilter: "全部",
   searchQuery: "",
   groups: [],
   historyItems: [],
@@ -849,7 +850,7 @@ function highlightTitle(title, query) {
   return html;
 }
 
-/* 按分组 + 分类 + 搜索词过滤历史记录 */
+/* 按分组 + 分类 + 难度 + 搜索词过滤历史记录 */
 function filterHistoryItems(items) {
   let filtered = items;
   if (state.groupFilter !== "全部") {
@@ -857,6 +858,9 @@ function filterHistoryItems(items) {
   }
   if (state.categoryFilter !== "全部") {
     filtered = filtered.filter((i) => (i.category || "其他") === state.categoryFilter);
+  }
+  if (state.difficultyFilter !== "全部") {
+    filtered = filtered.filter((i) => (i.difficulty || "Unknown") === state.difficultyFilter);
   }
   const q = state.searchQuery.trim().toLowerCase();
   if (q) {
@@ -866,6 +870,36 @@ function filterHistoryItems(items) {
     });
   }
   return filtered;
+}
+
+function renderDifficultyFilter(items) {
+  const el = $("difficulty-filter");
+  const counts = { Easy: 0, Medium: 0, Hard: 0 };
+  for (const it of items) {
+    const d = it.difficulty;
+    if (d in counts) counts[d]++;
+  }
+  const total = items.length;
+  const defs = [
+    ["全部", total, ""],
+    ["简单", counts.Easy, "Easy"],
+    ["中等", counts.Medium, "Medium"],
+    ["困难", counts.Hard, "Hard"],
+  ];
+  let html = "";
+  for (const [label, n, val] of defs) {
+    const active = state.difficultyFilter === (val || "全部");
+    const cls = val ? `diff-${val}` : "";
+    html += `<button class="cat-chip ${cls}${active ? " active" : ""}" data-diff="${val}">${label} (${n})</button>`;
+  }
+  el.innerHTML = html;
+  el.querySelectorAll(".cat-chip").forEach((b) => {
+    b.addEventListener("click", () => {
+      state.difficultyFilter = b.dataset.diff || "全部";
+      el.querySelectorAll(".cat-chip").forEach((x) => x.classList.toggle("active", x === b));
+      renderHistoryList(state.historyItems);
+    });
+  });
 }
 
 function makeHistoryItem(item) {
@@ -903,8 +937,8 @@ function renderHistoryList(items) {
     let msg = "暂无记录";
     if (state.searchQuery.trim()) {
       msg = "没有匹配「" + escapeHtml(state.searchQuery.trim()) + "」的题目";
-    } else if (state.groupFilter !== "全部" || state.categoryFilter !== "全部") {
-      msg = "该分组/分类下暂无记录";
+    } else if (state.groupFilter !== "全部" || state.categoryFilter !== "全部" || state.difficultyFilter !== "全部") {
+      msg = "该条件下暂无记录";
     }
     list.innerHTML = `<li class="history-empty">${msg}</li>`;
     return;
@@ -957,6 +991,7 @@ async function loadHistory() {
     const data = await resp.json();
     state.historyItems = data.items || [];
     renderCategoryFilter(state.historyItems);
+    renderDifficultyFilter(state.historyItems);
     renderHistoryList(state.historyItems);
   } catch {
     /* 忽略历史加载失败 */
