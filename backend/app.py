@@ -492,8 +492,10 @@ async def generate(req: GenerateRequest, user: dict = Depends(get_current_user))
             status_code=409,
             detail=f"「{title}」已生成过，请勿重复生成（如需更新内容请点击「重新生成」）",
         )
-    # 系统内已有该题题解（共享目录或其他用户生成过）：直接复用，不重复生成、不扣费
+    # 系统内已有该题题解（共享目录或其他用户生成过）：复用内容，不重新生成
+    # （复用只是节省生成成本，用户首次获得该题仍需按标准计费）
     if not req.force and history.find_any_record(slug):
+        record_generation(user, [slug])
         history.copy_record_to_user(slug, user["id"])
         return {"job_id": None, "slug": slug, "reused": True}
     # 全新生成：计费（普通 1 元/题，VIP 0.1 元/题；每日 200 题上限）
@@ -628,6 +630,10 @@ async def batch_start(req: BatchStartRequest, user: dict = Depends(get_current_u
         for item in to_reuse_cross:
             history.copy_record_to_user(item["slug"], user["id"])
         reused = len(to_reuse_own) + len(to_reuse_cross)
+        # 计费：新生成 + 跨用户复用（用户首次获得该题）都收费；纯加入已有分组（已付费）不重复收费
+        charge_slugs = [item["slug"] for item in to_generate + to_reuse_cross]
+        if charge_slugs:
+            record_generation(user, charge_slugs)
         if not to_generate:
             # 全部为复用/已在组内：直接返回完成
             _batch.update(
@@ -636,8 +642,6 @@ async def batch_start(req: BatchStartRequest, user: dict = Depends(get_current_u
             )
             return {"status": "noop", "total": 0, "invalid_count": len(invalid), "skipped": skipped, "reused": reused}
         queue = to_generate
-        # 计费：普通 1 元/题，VIP 0.1 元/题；每日 200 题上限（按题数占用）
-        record_generation(user, [item["slug"] for item in queue])
         _batch.update(
             status="running", queue=queue, total=len(queue), done=0, failed=0,
             current=None, message="批量生成进行中…",

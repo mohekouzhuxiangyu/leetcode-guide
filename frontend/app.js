@@ -869,9 +869,9 @@ async function submitGenerate(url, force) {
     }
     if (!resp.ok) throw new Error(data.detail || "请求失败");
     if (data.reused) {
-      // 系统内已有该题题解：直接复用，未重复生成、未扣费
+      // 系统内已有该题题解：复用内容、不重新生成，但按标准正常计费
       showInputOnly();
-      toast("♻️ 系统已有该题题解，已直接复用（未重复生成、未扣费）");
+      toast("♻️ 系统已有该题题解，已复用（未重复生成，已按标准计费）");
       loadRecord(data.slug);
       loadHistory();
       loadGroups();
@@ -2141,7 +2141,7 @@ async function startBatch() {
         if (!resp.ok) { toast(data.detail || "启动失败", true); return; }
         if (data.invalid_count) toast(`有 ${data.invalid_count} 个链接无法解析，已跳过`, true);
         if (data.skipped) toast(`已跳过 ${data.skipped} 道已在目标分组内的题目`, true);
-        if (data.reused) toast(`已复用 ${data.reused} 道系统中已有的题目（未重复生成、未扣费）`, true);
+        if (data.reused) toast(`已复用 ${data.reused} 道系统中已有的题目（未重复生成，首次获得的已计费）`, true);
         startBatchPolling();
       } catch (err) {
         toast("启动批量生成失败：" + err.message, true);
