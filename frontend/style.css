@@ -462,62 +462,6 @@ html { overflow-y: scroll; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.6); }
 ::-webkit-scrollbar-track { background: transparent; }
 
-@media (max-width: 860px) {
-  body { flex-direction: column; }
-  #sidebar { width: 100%; min-width: 0; height: auto; position: static; overflow-y: auto; }
-  .history-list { flex: none; overflow-y: visible; max-height: 50vh; }
-  #main { padding: 20px 16px; }
-  .input-row { flex-direction: column; }
-  /* 结果区左右布局在窄屏堆叠（还原为正常页面滚动） */
-  #result-panel { height: auto; overflow: visible; }
-  .result-layout { flex-direction: column; overflow: visible; }
-  .result-left {
-    flex: 1 1 auto;
-    width: 100%;
-    position: static;
-    max-height: none;
-    overflow-y: visible;
-  }
-  .result-left .ps-body { max-height: none; }   /* 手机端题目信息完整显示，不做高度裁剪 */
-  .result-right { overflow: visible; }
-  .fixed-user { position: static; display: flex; justify-content: flex-end; margin-top: 8px; padding: 0 16px; }
-
-  /* ---- 触屏 / 窄屏增强 ---- */
-  /* 输入框不小于 16px，避免 iOS 聚焦自动放大页面 */
-  input, textarea, select { font-size: 16px; }
-  /* 标签页横滑（不换行、不占多行高度） */
-  .tabs { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
-  .tabs::-webkit-scrollbar { display: none; }
-  .tab { flex: 1 0 auto; }
-  /* 批量行：下拉全宽 + 按钮换行 */
-  .batch-input-row { flex-wrap: wrap; }
-  .batch-group-select { flex: 1 1 100%; }
-  /* 管理员表格：横向滚动查看 */
-  #admin-users-list, #grant-usage-list, #grant-donations-list { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  /* 收款码适配屏幕宽度 */
-  .donate-qr img { width: min(240px, 74vw); height: auto; aspect-ratio: 1 / 1; }
-  /* 用户区按钮多时换行 */
-  .ua-inner { flex-wrap: wrap; justify-content: flex-end; }
-  /* 模板库头部换行 */
-  .templates-header { flex-wrap: wrap; }
-}
-
-/* 手机（小屏）进一步压缩 */
-@media (max-width: 520px) {
-  #main { padding: 14px 10px; }
-  .brand-name { font-size: 14px; }
-  .panel-head h1 { font-size: 20px; }
-  .tab { padding: 8px 10px; font-size: 13px; }
-  .history-item { padding: 8px; }
-  .donate-actions .btn { flex: 1 1 100%; }   /* 捐赠两按钮在手机上竖排 */
-  .donate-qr img { width: min(220px, 82vw); }
-  .templates-header h2 { font-size: 18px; }
-  .result-left .ps-body { max-height: none; }   /* 手机端题目信息完整显示 */
-  .modal { width: 94vw; }
-  .tpl-card { padding: 10px 12px; }
-  .mermaid-container { padding: 10px; }
-}
-
 /* ---------- 新增：二级按钮 / 分类筛选 / 批量生成 / 动画演示 / 模板库 ---------- */
 .btn-secondary {
   background: var(--btn-secondary-bg, #334155);
@@ -1345,3 +1289,69 @@ mark {
   outline: none;
 }
 .donate-input:focus { border-color: var(--accent); }
+
+/* ============================================================
+   响应式（触屏 / 手机）：放在文件末尾，确保覆盖上面的桌面端规则
+   （此前因位置靠前被后置的桌面规则覆盖，导致手机端算法解析被固定高度裁切）
+   ============================================================ */
+@media (max-width: 860px) {
+  body { flex-direction: column; }
+  #sidebar { width: 100%; min-width: 0; height: auto; position: static; overflow-y: auto; }
+  .history-list { flex: none; overflow-y: visible; max-height: 50vh; }
+  #main { padding: 20px 16px; }
+  .input-row { flex-direction: column; }
+  /* 结果区左右布局在窄屏堆叠：全部还原为自然流式高度，内容完整显示、可滚动 */
+  #result-panel { height: auto; overflow: visible; }
+  .result-layout {
+    flex-direction: column;
+    overflow: visible;
+    flex: none;
+    min-height: 0;
+  }
+  .result-left {
+    flex: 1 1 auto;
+    width: 100%;
+    position: static;
+    max-height: none;
+    overflow-y: visible;
+  }
+  .result-left .ps-body { max-height: none; }   /* 手机端题目信息完整显示，不做高度裁剪 */
+  .result-right { overflow: visible; overflow-y: visible; height: auto; }
+  .tab-content { overflow: visible; height: auto; }
+  .fixed-user { position: static; display: flex; justify-content: flex-end; margin-top: 8px; padding: 0 16px; }
+
+  /* ---- 触屏 / 窄屏增强 ---- */
+  /* 输入框不小于 16px，避免 iOS 聚焦自动放大页面 */
+  input, textarea, select { font-size: 16px; }
+  /* 标签页横滑（不换行、不占多行高度） */
+  .tabs { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { flex: 1 0 auto; }
+  /* 批量行：下拉全宽 + 按钮换行 */
+  .batch-input-row { flex-wrap: wrap; }
+  .batch-group-select { flex: 1 1 100%; }
+  /* 管理员表格：横向滚动查看 */
+  #admin-users-list, #grant-usage-list, #grant-donations-list { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  /* 收款码适配屏幕宽度 */
+  .donate-qr img { width: min(240px, 74vw); height: auto; aspect-ratio: 1 / 1; }
+  /* 用户区按钮多时换行 */
+  .ua-inner { flex-wrap: wrap; justify-content: flex-end; }
+  /* 模板库头部换行 */
+  .templates-header { flex-wrap: wrap; }
+}
+
+/* 手机（小屏）进一步压缩 */
+@media (max-width: 520px) {
+  #main { padding: 14px 10px; }
+  .brand-name { font-size: 14px; }
+  .panel-head h1 { font-size: 20px; }
+  .tab { padding: 8px 10px; font-size: 13px; }
+  .history-item { padding: 8px; }
+  .donate-actions .btn { flex: 1 1 100%; }   /* 捐赠两按钮在手机上竖排 */
+  .donate-qr img { width: min(220px, 82vw); }
+  .templates-header h2 { font-size: 18px; }
+  .result-left .ps-body { max-height: none; }   /* 手机端题目信息完整显示 */
+  .modal { width: 94vw; }
+  .tpl-card { padding: 10px 12px; }
+  .mermaid-container { padding: 10px; }
+}
