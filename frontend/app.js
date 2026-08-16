@@ -354,7 +354,7 @@ function renderResult(record) {
   window.__codeMap = record.code || {};
   const problem = record.problem || {};
 
-  $("result-title").textContent = `${problem.title || record.title || record.slug} #${problem.id || ""}`;
+  $("result-title").textContent = `${record.title || problem.title_cn || problem.title || record.slug} #${problem.id || ""}`;
   const diff = $("result-difficulty");
   diff.textContent = DIFF_ZH[problem.difficulty] || problem.difficulty || "未知";
   diff.className = "badge " + (problem.difficulty || "Unknown");

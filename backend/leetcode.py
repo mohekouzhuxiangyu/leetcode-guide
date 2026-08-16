@@ -10,6 +10,7 @@ from html.parser import HTMLParser
 from typing import Optional
 
 import requests
+from curl_cffi import requests as cr
 
 GRAPHQL_ENDPOINTS = [
     # leetcode.com 优先：cn 站的 GraphQL 对无登录请求有 Cloudflare 拦截（403），
@@ -17,6 +18,8 @@ GRAPHQL_ENDPOINTS = [
     "https://leetcode.com/graphql",
     "https://leetcode.cn/graphql",
 ]
+
+CN_GRAPHQL_URL = "https://leetcode.cn/graphql"
 
 HEADERS = {
     "User-Agent": (
@@ -144,6 +147,23 @@ def _query_graphql(endpoint: str, slug: str) -> Optional[dict]:
     return question if question else None
 
 
+def fetch_cn_title(slug: str) -> Optional[str]:
+    """通过 leetcode.cn GraphQL 获取中文标题（translatedTitle）。"""
+    try:
+        q = "query q($s: String!) { question(titleSlug: $s) { translatedTitle } }"
+        r = cr.post(
+            CN_GRAPHQL_URL,
+            json={"query": q, "variables": {"s": slug}},
+            impersonate="chrome",
+            timeout=15,
+        )
+        r.raise_for_status()
+        title = ((r.json().get("data") or {}).get("question") or {}).get("translatedTitle")
+        return title or None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def fetch_problem(slug: str) -> Optional[dict]:
     """抓取题目，返回结构化字典；失败返回 None。"""
     last_err: Optional[Exception] = None
@@ -152,7 +172,9 @@ def fetch_problem(slug: str) -> Optional[dict]:
             try:
                 q = _query_graphql(endpoint, slug)
                 if q is not None:
-                    return _normalize(q)
+                    problem = _normalize(q)
+                    problem["title_cn"] = fetch_cn_title(slug)
+                    return problem
                 break  # 该端点返回空题目，换下一个端点
             except Exception as exc:  # noqa: BLE001
                 last_err = exc

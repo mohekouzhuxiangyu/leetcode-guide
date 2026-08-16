@@ -327,7 +327,9 @@ def fetch_node(state: AgentState) -> dict:
     if problem is None:
         problem = leetcode.fallback_problem(slug or "", state.get("url", ""))
     category, _ = categories.classify(problem.get("tags"))
-    return {"problem": problem, "title": problem["title"], "category": category}
+    # 优先使用中文标题
+    title = problem.get("title_cn") or problem["title"]
+    return {"problem": problem, "title": title, "category": category}
 
 
 def walkthrough_node(state: AgentState, llm) -> dict:
@@ -485,7 +487,7 @@ def run_pipeline(url: str, set_stage: Optional[StageCallback] = None) -> dict:
     result = {
         "url": url,
         "slug": slug,
-        "title": final_state.get("title") or problem["title"],
+        "title": final_state.get("title") or problem.get("title_cn") or problem["title"],
         "problem": problem,
         "problem_zh": final_state.get("problem_zh", ""),
         "category": final_state.get("category") or "其他",
