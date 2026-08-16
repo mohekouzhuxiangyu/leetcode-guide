@@ -7,13 +7,13 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Optional
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Form, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import auth, history
+from . import auth, history, vip
 from .graph import run_pipeline
 from .leetcode import extract_slug
 from .templates import CATEGORY_TEMPLATES
@@ -40,6 +40,14 @@ def get_current_user(authorization: Optional[str] = Header(default=None)) -> dic
     user = auth.get_user_by_token(token)
     if not user:
         raise HTTPException(status_code=401, detail="未登录或登录已过期")
+    return user
+
+
+def require_vip(user: dict = Depends(get_current_user)) -> dict:
+    """增删改等写操作需要 VIP 权限。"""
+    row = auth.get_user_row(user["id"])
+    if not auth.is_vip(row):
+        raise HTTPException(status_code=403, detail="该操作需要开通 VIP，请先购买会员")
     return user
 
 
@@ -110,6 +118,45 @@ async def me(user: dict = Depends(get_current_user)) -> dict:
     return {"user": user}
 
 
+# ---------------- VIP 会员 / 支付宝 ----------------
+
+@app.get("/api/vip/plans")
+async def vip_plans() -> dict:
+    return {"plans": {k: {"name": v["name"], "amount": v["amount"], "desc": v["desc"]} for k, v in vip.PLANS.items()}}
+
+
+class VipOrderRequest(BaseModel):
+    plan: str
+
+
+@app.post("/api/vip/order")
+async def vip_order(req: VipOrderRequest, user: dict = Depends(get_current_user)) -> dict:
+    order, err = vip.create_order(user["id"], req.plan)
+    if order is None:
+        raise HTTPException(status_code=400, detail=err)
+    return order
+
+
+@app.get("/api/vip/mock-pay")
+async def vip_mock_pay(order_no: str) -> RedirectResponse:
+    """开发模式：未配置支付宝时点击该链接模拟支付成功。"""
+    ok = vip.mark_paid(order_no)
+    if ok:
+        return RedirectResponse(url="/?vip=ok")
+    return RedirectResponse(url="/?vip=fail")
+
+
+@app.post("/api/vip/alipay/notify")
+async def vip_alipay_notify(request: Request) -> str:
+    """支付宝异步通知（生产环境验签，开发环境直接按订单号入账）。"""
+    form = dict(await request.form())
+    if vip.is_alipay_configured() and not vip.verify_alipay_notify(dict(form)):
+        return "failure"
+    if form.get("trade_status") == "TRADE_SUCCESS" and form.get("out_trade_no"):
+        vip.mark_paid(form["out_trade_no"])
+    return "success"
+
+
 # ---------------- 生成任务（后台执行，前端轮询进度） ----------------
 
 jobs: dict[str, dict] = {}
@@ -163,7 +210,7 @@ def _worker(user_id: int, job_id: str, url: str) -> None:
 
 
 @app.post("/api/generate")
-async def generate(req: GenerateRequest, user: dict = Depends(get_current_user)) -> dict:
+async def generate(req: GenerateRequest, user: dict = Depends(require_vip)) -> dict:
     url = (req.url or "").strip()
     slug = extract_slug(url)
     if not slug:
@@ -242,7 +289,7 @@ class BatchStartRequest(BaseModel):
 
 
 @app.post("/api/batch/start")
-async def batch_start(req: BatchStartRequest, user: dict = Depends(get_current_user)) -> dict:
+async def batch_start(req: BatchStartRequest, user: dict = Depends(require_vip)) -> dict:
     global _batch_thread
     with _batch_lock:
         if _batch["status"] == "running":
@@ -313,7 +360,7 @@ async def list_groups_api(user: dict = Depends(get_current_user)) -> dict:
 
 
 @app.post("/api/groups")
-async def create_group_api(req: GroupRequest, user: dict = Depends(get_current_user)) -> dict:
+async def create_group_api(req: GroupRequest, user: dict = Depends(require_vip)) -> dict:
     name = (req.name or "").strip()
     if not name:
         raise HTTPException(status_code=400, detail="分组名称不能为空")
@@ -322,13 +369,13 @@ async def create_group_api(req: GroupRequest, user: dict = Depends(get_current_u
 
 
 @app.delete("/api/groups/{name}")
-async def delete_group_api(name: str, user: dict = Depends(get_current_user)) -> dict:
+async def delete_group_api(name: str, user: dict = Depends(require_vip)) -> dict:
     history.delete_group(user["id"], name)
     return {"deleted": name}
 
 
 @app.post("/api/records/move")
-async def move_records_api(req: MoveRequest, user: dict = Depends(get_current_user)) -> dict:
+async def move_records_api(req: MoveRequest, user: dict = Depends(require_vip)) -> dict:
     n = history.move_records(user["id"], req.slugs, (req.group or "").strip())
     return {"moved": n}
 
@@ -356,7 +403,7 @@ async def get_history(slug: str, user: dict = Depends(get_current_user)) -> dict
 
 
 @app.delete("/api/history/{slug}")
-async def delete_history(slug: str, user: dict = Depends(get_current_user)) -> dict:
+async def delete_history(slug: str, user: dict = Depends(require_vip)) -> dict:
     ok = history.delete_record(user["id"], slug)
     if not ok:
         raise HTTPException(status_code=404, detail="记录不存在")

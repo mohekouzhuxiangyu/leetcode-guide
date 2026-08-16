@@ -159,14 +159,32 @@ function handleAuthExpired() {
   toast("登录已过期，请重新登录", true);
 }
 
+/* VIP 是否有效 */
+function isVip() {
+  if (!auth.user || !auth.user.vip) return false;
+  if (!auth.user.vip_expires_at) return true;
+  return new Date(auth.user.vip_expires_at) > new Date();
+}
+
+/* VIP 权限门控：未登录弹登录，未开通弹购买 */
+function requireVip() {
+  if (!auth.user) { showLoginModal(); return false; }
+  if (!isVip()) { showVipModal(); return false; }
+  return true;
+}
+
 function renderUserArea() {
   const el = $("user-area");
   if (!el) return;
   if (auth.user) {
+    const vipHtml = isVip()
+      ? `<span class="vip-badge" title="VIP 有效期至 ${escapeHtml(auth.user.vip_expires_at || "永久")}">👑 VIP</span>`
+      : `<button class="ua-action vip-buy" id="ua-vip">开通 VIP</button>`;
     el.innerHTML = `<div class="ua-inner">
-      <span class="ua-name">👤 ${escapeHtml(auth.user.username)}</span>
+      <span class="ua-name">👤 ${escapeHtml(auth.user.username)} ${vipHtml}</span>
       <button class="ua-action" id="ua-logout">退出</button>
     </div>`;
+    if (!isVip()) $("ua-vip").addEventListener("click", showVipModal);
     $("ua-logout").addEventListener("click", logoutUser);
   } else {
     el.innerHTML = `<div class="ua-inner">
@@ -177,6 +195,56 @@ function renderUserArea() {
     $("ua-login").addEventListener("click", showLoginModal);
     $("ua-register").addEventListener("click", showRegisterModal);
   }
+}
+
+/* 开通 VIP（支付宝支付） */
+async function showVipModal() {
+  let plans = {};
+  try {
+    const resp = await fetch("/api/vip/plans");
+    plans = (await resp.json()).plans || {};
+  } catch { /* 忽略 */ }
+  let body = `<div class="modal-msg">开通 VIP 后解锁全部功能：新增题目、批量生成、删除/编辑题目、分组管理。</div>
+    <div class="vip-plans">`;
+  for (const [key, p] of Object.entries(plans)) {
+    body += `<div class="vip-plan" data-plan="${escapeHtml(key)}">
+      <div class="vip-plan-name">${escapeHtml(p.name)}</div>
+      <div class="vip-plan-amount">¥${escapeHtml(p.amount)}</div>
+      <div class="vip-plan-desc">${escapeHtml(p.desc)}</div>
+    </div>`;
+  }
+  body += `</div>
+    <div class="modal-msg" style="color:var(--text-dim);font-size:12px;">💳 使用支付宝支付，支付完成后自动开通。开发模式下点击支付将直接模拟成功。</div>`;
+  openModal(
+    "开通 VIP",
+    body,
+    `<button class="btn btn-small" id="modal-cancel">取消</button>
+     <button class="btn btn-primary btn-small" id="modal-ok">💰 支付宝支付</button>`
+  );
+  let selected = Object.keys(plans)[0];
+  const cards = document.querySelectorAll(".vip-plan");
+  cards.forEach((c) => c.classList.toggle("active", c.dataset.plan === selected));
+  cards.forEach((c) =>
+    c.addEventListener("click", () => {
+      selected = c.dataset.plan;
+      cards.forEach((x) => x.classList.toggle("active", x === c));
+    })
+  );
+  $("modal-cancel").addEventListener("click", closeModal);
+  $("modal-ok").addEventListener("click", async () => {
+    try {
+      const resp = await apiFetch("/api/vip/order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan: selected }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) { modalError(data.detail || "下单失败"); return; }
+      window.location.href = data.pay_url;
+    } catch (err) {
+      modalError("下单失败：" + err.message);
+    }
+  });
 }
 
 function showLoginModal() {
@@ -308,6 +376,17 @@ async function initAuth() {
     loadHistory();
     loadGroups();
     updateBatchUI();
+    // 支付宝/模拟支付跳回 ?vip=ok：刷新 VIP 状态
+    const qs = new URLSearchParams(location.search);
+    if (qs.get("vip") === "ok") {
+      const resp = await apiFetch("/api/auth/me");
+      if (resp.ok) {
+        auth.user = (await resp.json()).user;
+        renderUserArea();
+        toast("🎉 VIP 开通成功");
+      }
+      window.history.replaceState(null, "", location.pathname);
+    }
   } else {
     state.historyItems = [];
     state.groups = [];
@@ -493,7 +572,7 @@ function showError(msg) {
 /* ---------- 生成流程 ---------- */
 
 async function submitGenerate(url) {
-  if (!auth.user) { showLoginModal(); return; }
+  if (!requireVip()) return; // 未登录弹登录，未开通 VIP 弹购买
   currentJobId = null;
   showProgress();
   try {
@@ -639,7 +718,10 @@ function renderResult(record) {
 
   const note = (problem.source === "llm") ? "（题目原文由模型根据知识补全）" : "";
   const timeText = record.updated_at || record.created_at || new Date().toLocaleString();
-  $("result-time").textContent = `生成于 ${timeText} ${note}`;
+  const sharedNote = record.shared ? " · 🆓 免费共享题目（只读）" : "";
+  $("result-time").textContent = `生成于 ${timeText} ${note}${sharedNote}`;
+  // 共享目录只读：隐藏重新生成按钮
+  $("btn-regen").classList.toggle("hidden", !!record.shared);
 
   // 固定题目描述（置顶，便于与下方内容对比；Markdown 渲染）
   const ps = $("problem-sticky");
@@ -1161,40 +1243,43 @@ function makeHistoryItem(item) {
   li.className = "history-item diff-" + item.difficulty;
   li.dataset.slug = item.slug;
   const linkUrl = item.url || "https://leetcode.com/problems/" + item.slug + "/";
+  const freeBadge = item.shared ? '<span class="free-badge">免费</span> ' : "";
+  const delBtn = item.shared ? "" : '<button class="h-del" title="删除记录">🗑</button>';
   li.innerHTML = `
-    <div class="h-title">${highlightTitle(item.title, state.searchQuery.trim())}</div>
+    <div class="h-title">${freeBadge}${highlightTitle(item.title, state.searchQuery.trim())}</div>
     <div class="h-meta">
       <span class="h-diff ${item.difficulty}">${DIFF_ZH[item.difficulty] || item.difficulty}</span>
       <span class="h-date">${escapeHtml((item.updated_at || "").slice(0, 16))}</span>
       <span class="h-actions">
         <a class="h-link" href="${escapeHtml(linkUrl)}" target="_blank" rel="noopener" title="打开力扣原题">🔗 原题</a>
-        <button class="h-del" title="删除记录">🗑</button>
+        ${delBtn}
       </span>
     </div>`;
-  li.querySelector(".h-title").addEventListener("click", () => loadRecord(item.slug));
-  // 点击整个格子切换题目（链接/删除按钮除外）
   li.addEventListener("click", () => loadRecord(item.slug));
   // 点原题链接只跳转，不触发加载记录
   li.querySelector(".h-link").addEventListener("click", (e) => e.stopPropagation());
-  li.querySelector(".h-del").addEventListener("click", (e) => {
-    e.stopPropagation();
-    confirmAction("删除记录", `确定删除「${item.title}」？删除后不可恢复。`, async () => {
-      try {
-        const resp = await apiFetch("/api/history/" + encodeURIComponent(item.slug), { method: "DELETE" });
-        if (!resp.ok) {
-          const data = await resp.json().catch(() => ({}));
-          toast(data.detail || "删除失败", true);
-          return;
+  if (!item.shared) {
+    li.querySelector(".h-del").addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (!requireVip()) return; // 未开通 VIP 弹购买
+      confirmAction("删除记录", `确定删除「${item.title}」？删除后不可恢复。`, async () => {
+        try {
+          const resp = await apiFetch("/api/history/" + encodeURIComponent(item.slug), { method: "DELETE" });
+          if (!resp.ok) {
+            const data = await resp.json().catch(() => ({}));
+            toast(data.detail || "删除失败", true);
+            return;
+          }
+          delete state.cache[item.slug];
+          loadHistory();
+          loadGroups(); // 删除后刷新分组数量
+          toast("已删除「" + item.title + "」");
+        } catch (err) {
+          toast("删除失败：" + err.message, true);
         }
-        delete state.cache[item.slug];
-        loadHistory();
-        loadGroups(); // 删除后刷新分组数量
-        toast("已删除「" + item.title + "」");
-      } catch (err) {
-        toast("删除失败：" + err.message, true);
-      }
+      });
     });
-  });
+  }
   return li;
 }
 
@@ -1335,6 +1420,7 @@ function populateGroupSelect() {
 }
 
 async function createGroup() {
+  if (!requireVip()) return;
   promptText("新建分组", "输入分组名称", "", async (name) => {
     try {
       const resp = await apiFetch("/api/groups", {
@@ -1363,6 +1449,7 @@ async function createGroup() {
 /* ---------- 批量生成（链接列表 + 分组） ---------- */
 
 async function startBatch() {
+  if (!requireVip()) return;
   const urls = ($("urls-input").value || "")
     .split("\n")
     .map((u) => u.trim())
@@ -1494,7 +1581,10 @@ function init() {
   });
 
   $("btn-regen").addEventListener("click", () => {
-    if (currentSlug) submitGenerate("https://leetcode.com/problems/" + currentSlug + "/");
+    if (!requireVip()) return;
+    if (currentSlug && !(state.record && state.record.shared)) {
+      submitGenerate("https://leetcode.com/problems/" + currentSlug + "/");
+    }
   });
 
   $("ps-toggle").addEventListener("click", () => {

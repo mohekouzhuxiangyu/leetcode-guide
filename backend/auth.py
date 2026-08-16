@@ -70,9 +70,6 @@ def create_user(username: str, email: str, password: str):
         (username, email, hash_password(password), token),
         fetch="one",
     )
-    # 首个用户认领历史遗留数据（旧版全局数据）
-    query("UPDATE records SET user_id = %s WHERE user_id IS NULL", (row["id"],))
-    query("UPDATE groups SET user_id = %s WHERE user_id IS NULL", (row["id"],))
     return dict(row), token
 
 
@@ -114,21 +111,47 @@ def login(email: str, password: str):
         return None, "邮箱未验证，请先查收验证邮件完成验证"
     token = secrets.token_urlsafe(48)
     query("INSERT INTO sessions (token, user_id) VALUES (%s, %s)", (token, row["id"]))
-    user = {"id": row["id"], "username": row["username"], "email": row["email"], "email_verified": True}
+    user = _user_public(row)
     return user, token
+
+
+def _user_public(row) -> dict:
+    return {
+        "id": row["id"],
+        "username": row["username"],
+        "email": row["email"],
+        "email_verified": row["email_verified"],
+        "vip": bool(row["vip"]),
+        "vip_expires_at": row["vip_expires_at"].isoformat() if row.get("vip_expires_at") else None,
+    }
 
 
 def get_user_by_token(token: str):
     if not token:
         return None
     row = query(
-        """SELECT u.id, u.username, u.email, u.email_verified
+        """SELECT u.id, u.username, u.email, u.email_verified, u.vip, u.vip_expires_at
            FROM sessions s JOIN users u ON u.id = s.user_id
            WHERE s.token = %s""",
         (token,),
         fetch="one",
     )
-    return dict(row) if row else None
+    return _user_public(row) if row else None
+
+
+def get_user_row(user_id: int):
+    return query("SELECT * FROM users WHERE id = %s", (user_id,), fetch="one")
+
+
+def is_vip(row) -> bool:
+    """VIP 是否有效（开通且未过期；vip_expires_at 为空视为永久）。"""
+    if not row or not row["vip"]:
+        return False
+    if not row.get("vip_expires_at"):
+        return True
+    from datetime import datetime, timezone
+
+    return row["vip_expires_at"] > datetime.now(timezone.utc)
 
 
 def logout(token: str) -> None:

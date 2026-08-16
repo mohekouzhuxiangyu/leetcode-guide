@@ -914,3 +914,49 @@ mark {
 /* ---------- 认证表单 ---------- */
 .modal-form .modal-label { display: block; font-size: 12px; color: var(--text-dim); margin: 8px 0 4px; }
 .modal-link { display: block; word-break: break-all; color: var(--accent); font-size: 13px; margin: 6px 0; }
+
+/* ---------- VIP / 免费徽章 ---------- */
+.vip-badge {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #f59e0b, #fbbf24);
+  color: #7c2d12;
+  vertical-align: middle;
+}
+.vip-buy { color: #f59e0b !important; font-weight: 700; }
+.free-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: rgba(52, 211, 153, 0.15);
+  color: var(--green);
+  border: 1px solid rgba(52, 211, 153, 0.4);
+  margin-right: 4px;
+  vertical-align: 1px;
+}
+
+/* ---------- VIP 套餐选择 ---------- */
+.vip-plans { display: flex; gap: 10px; margin: 10px 0; }
+.vip-plan {
+  flex: 1;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 10px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.vip-plan:hover { border-color: var(--accent); }
+.vip-plan.active {
+  border-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.1);
+}
+.vip-plan-name { font-size: 13px; font-weight: 600; }
+.vip-plan-amount { font-size: 20px; font-weight: 800; color: #f59e0b; margin: 4px 0; }
+.vip-plan-desc { font-size: 11px; color: var(--text-dim); }
