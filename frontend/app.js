@@ -69,13 +69,15 @@ function hide(el) { el.classList.add("hidden"); }
 
 /* ---------- 表单弹窗（替代原生 alert/confirm/prompt） ---------- */
 
-function openModal(title, bodyHtml, actionsHtml) {
+function openModal(title, bodyHtml, actionsHtml, opts = {}) {
   $("modal-title").textContent = title;
   $("modal-body").innerHTML = bodyHtml;
   const err = $("modal-error");
   err.textContent = "";
   err.classList.add("hidden");
   $("modal-actions").innerHTML = actionsHtml;
+  const box = $("modal-overlay").querySelector(".modal");
+  box.style.width = opts.width || "";
   show($("modal-overlay"));
 }
 
@@ -284,23 +286,26 @@ function qrOnError(el, base) {
   }
 }
 
-/* 👑 VIP 管理（仅管理员）：开通永久 VIP / 查看今日用量 */
+/* 👑 管理员面板（仅管理员）：查看全部用户与权限，开通/取消 VIP */
 function showGrantModal() {
   openModal(
-    "VIP 管理",
+    "👑 管理员面板 · 用户与权限",
     `<div class="modal-form">
-       <label class="modal-label">为捐款用户开通永久 VIP</label>
-       <input id="grant-email" class="modal-input" type="email" spellcheck="false" placeholder="donor@example.com" />
-       <button class="btn btn-primary btn-small" id="grant-vip-btn" style="width:100%;">👑 开通永久 VIP</button>
-     </div>
-     <div class="modal-form">
-       <label class="modal-label">今日生成用量（计费流水）</label>
-       <button class="btn btn-small" id="grant-usage-btn" style="width:100%;">📊 查看今日用量</button>
-     </div>
-     <div id="grant-usage-list"></div>`,
-    `<button class="btn btn-small" id="modal-cancel">关闭</button>`
+       <label class="modal-label">按邮箱为捐款用户开通永久 VIP</label>
+       <div style="display:flex;gap:8px;">
+         <input id="grant-email" class="modal-input" type="email" spellcheck="false" placeholder="donor@example.com" />
+         <button class="btn btn-primary btn-small" id="grant-vip-btn" style="white-space:nowrap;">👑 开通 VIP</button>
+       </div>
+       <button class="btn btn-small" id="grant-usage-btn" style="width:100%;margin-top:8px;">📊 查看今日用量（计费流水）</button>
+       <div id="grant-usage-list"></div>
+       <hr style="border:none;border-top:1px solid var(--border);margin:14px 0;">
+       <label class="modal-label">👥 全部用户（<span id="admin-users-total">…</span>人）· 点击「开通 / 取消 VIP」更改权限</label>
+       <div id="admin-users-list" style="max-height:44vh;overflow-y:auto;"></div>
+     </div>`,
+    `<button class="btn btn-primary btn-small" id="modal-ok">关闭</button>`,
+    { width: "min(94vw, 760px)" }
   );
-  $("modal-cancel").addEventListener("click", closeModal);
+  $("modal-ok").addEventListener("click", closeModal);
   $("grant-vip-btn").addEventListener("click", async () => {
     const email = $("grant-email").value.trim();
     if (!email) { modalError("请输入用户邮箱"); return; }
@@ -313,6 +318,7 @@ function showGrantModal() {
       const data = await resp.json();
       if (!resp.ok) { modalError(data.detail || "操作失败"); return; }
       toast(data.detail || "操作成功");
+      loadAdminUsers(); // 刷新用户列表
     } catch (err) {
       modalError("操作失败：" + err.message);
     }
@@ -335,6 +341,71 @@ function showGrantModal() {
       modalError("获取失败：" + err.message);
     }
   });
+  loadAdminUsers();
+}
+
+async function loadAdminUsers() {
+  const list = $("admin-users-list");
+  if (!list) return;
+  try {
+    const resp = await apiFetch("/api/admin/users");
+    if (!resp.ok) {
+      const data = await resp.json().catch(() => ({}));
+      modalError(data.detail || "获取用户列表失败");
+      return;
+    }
+    const data = await resp.json();
+    const total = $("admin-users-total");
+    if (total) total.textContent = data.total;
+    if (!data.users.length) {
+      list.innerHTML = `<div class="modal-msg" style="color:var(--text-dim);font-size:12px;">暂无用户</div>`;
+      return;
+    }
+    list.innerHTML = `<table class="usage-table">
+      <tr><th>ID</th><th>用户名</th><th>邮箱</th><th>注册</th><th>今日</th><th>题目</th><th>分组</th><th>VIP</th><th>操作</th></tr>
+      ${data.users.map((u) => `<tr>
+        <td>${u.id}</td>
+        <td>${escapeHtml(u.username)}</td>
+        <td>${escapeHtml(u.email)}${u.email_verified ? "" : ` <span style="color:var(--red)">(未验证)</span>`}</td>
+        <td>${escapeHtml(u.created_at)}</td>
+        <td>${u.today_usage}/200</td>
+        <td>${u.record_count}</td>
+        <td>${u.group_count}</td>
+        <td>${u.vip ? '<span class="vip-badge">VIP</span>' : "—"}</td>
+        <td>${u.vip
+          ? `<button class="btn btn-small btn-stop" data-vip-id="${u.id}" data-vip-off="1">取消 VIP</button>`
+          : `<button class="btn btn-small btn-start" data-vip-id="${u.id}" data-vip-on="1">开通 VIP</button>`}</td>
+      </tr>`).join("")}
+    </table>`;
+    list.querySelectorAll("[data-vip-id]").forEach((btn) => {
+      btn.addEventListener("click", () => setUserVip(btn.dataset.vipId, !!btn.dataset.vipOn));
+    });
+  } catch (err) {
+    modalError("获取用户列表失败：" + err.message);
+  }
+}
+
+async function setUserVip(userId, vip) {
+  const action = vip ? "开通" : "取消";
+  confirmAction(
+    vip ? "开通 VIP" : "取消 VIP",
+    `确定${action}该用户的 VIP 权限？${vip ? "开通后为永久 VIP，生成题目 0.1 元/题，最多 100 个分组。" : "取消后该用户按普通用户计费（1 元/题），最多 3 个分组。"}`,
+    async () => {
+      try {
+        const resp = await apiFetch(`/api/admin/users/${userId}/vip`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ vip }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) { toast(data.detail || "操作失败", true); return; }
+        toast(`${action} VIP 成功`);
+        showGrantModal(); // 重新打开面板，刷新用户列表
+      } catch (err) {
+        toast("操作失败：" + err.message, true);
+      }
+    }
+  );
 }
 
 function showLoginModal() {

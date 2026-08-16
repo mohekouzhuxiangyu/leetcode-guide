@@ -231,6 +231,64 @@ async def vip_usage(user: dict = Depends(get_current_user)) -> dict:
     return {"items": items, "total_today": float(total["s"] or 0), "count_today": len(items)}
 
 
+# ---------------- 管理员：用户与权限管理 ----------------
+
+@app.get("/api/admin/users")
+async def admin_list_users(user: dict = Depends(get_current_user)) -> dict:
+    """管理员查看全部用户及其权限（VIP 状态、今日用量、题目数、分组数）。"""
+    if not user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="仅管理员可操作")
+    rows = query(
+        """SELECT u.id, u.username, u.email, u.email_verified, u.vip, u.created_at,
+                  COALESCE(d.count, 0) AS today_usage,
+                  (SELECT COUNT(*) FROM records r WHERE r.user_id = u.id) AS record_count,
+                  (SELECT COUNT(*) FROM (
+                      SELECT DISTINCT group_name AS n FROM record_groups g WHERE g.user_id = u.id
+                      UNION
+                      SELECT name AS n FROM groups g WHERE g.user_id = u.id
+                  ) gc) AS group_count
+           FROM users u
+           LEFT JOIN daily_usage d ON d.user_id = u.id AND d.day = CURRENT_DATE
+           ORDER BY u.id""",
+        fetch="all",
+    )
+    items = [
+        {
+            "id": r["id"],
+            "username": r["username"],
+            "email": r["email"],
+            "email_verified": bool(r["email_verified"]),
+            "vip": bool(r["vip"]),
+            "created_at": r["created_at"].strftime("%Y-%m-%d") if r["created_at"] else "",
+            "today_usage": int(r["today_usage"] or 0),
+            "record_count": int(r["record_count"] or 0),
+            "group_count": int(r["group_count"] or 0),
+        }
+        for r in rows
+    ]
+    return {"users": items, "total": len(items)}
+
+
+class AdminVipRequest(BaseModel):
+    vip: bool = True
+
+
+@app.post("/api/admin/users/{user_id}/vip")
+async def admin_set_vip(user_id: int, req: AdminVipRequest, user: dict = Depends(get_current_user)) -> dict:
+    """管理员开通 / 取消某用户的 VIP 权限。"""
+    if not user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="仅管理员可操作")
+    row = query("SELECT id FROM users WHERE id = %s", (user_id,), fetch="one")
+    if not row:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    query(
+        "UPDATE users SET vip = %s, vip_expires_at = NULL WHERE id = %s",
+        (bool(req.vip), user_id),
+    )
+    updated = auth.get_user_row(user_id)
+    return {"ok": True, "vip": bool(req.vip), "user": auth._user_public(updated)}
+
+
 @app.get("/api/vip/mock-pay")
 async def vip_mock_pay(order_no: str) -> RedirectResponse:
     """开发模式：未配置支付宝时点击该链接模拟支付成功。"""
