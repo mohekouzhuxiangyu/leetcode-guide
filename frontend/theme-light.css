@@ -33,13 +33,22 @@
 .h-diff, .badge { color: #fff; }
 .wt-note { background: rgba(22, 163, 74, 0.08); }
 
-/* 模板代码区固定深底浅字 */
-.tpl-card pre { background: #0d1117 !important; border-color: #30363d; }
-.tpl-card pre code { color: #e6edf3 !important; }
-.tpl-card pre code.hljs { background: transparent !important; color: inherit !important; }
-#tab-template .code-block pre { background: #0d1117 !important; }
-#tab-template .code-block pre code { color: #e6edf3 !important; }
-#tab-template .code-block pre code.hljs { background: transparent !important; color: inherit !important; }
+/* 白天模式代码区：白底深字（配合 github.min.css 浅色高亮主题） */
+.code-block pre,
+.tpl-card pre,
+#tab-template .code-block pre,
+.mermaid-source pre,
+.note-preview pre,
+.problem-example pre { background: #ffffff; border-color: var(--border); }
+.code-block pre code,
+.tpl-card pre code,
+#tab-template .code-block pre code,
+.mermaid-source pre code,
+.note-preview pre code { color: #24292f; }
+.code-block pre code.hljs,
+.tpl-card pre code.hljs,
+#tab-template .code-block pre code.hljs,
+.note-preview pre code.hljs { background: transparent; color: inherit; }
 
 /* 难度筛选 chips：非选中态用深色文字 */
 .cat-chip.diff-Easy   { color: #15803d; border-color: rgba(22, 163, 74, 0.55); }

@@ -1697,10 +1697,12 @@ function init() {
     try { marked.setOptions({ breaks: true, gfm: true }); } catch (e) {}
   }
 
-  // 主题：暗夜/白日（切换时直接替换主题 CSS 文件）
+  // 主题：暗夜/白日（切换时直接替换主题 CSS 文件 + 代码高亮主题文件）
   function applyThemeFile(theme) {
     const link = $("theme-css");
     if (link) link.href = "/assets/theme-" + theme + ".css?v=1";
+    const hl = $("hljs-theme");
+    if (hl) hl.href = "/assets/vendor/github-" + (theme === "light" ? "" : "dark") + ".min.css";
   }
   const savedTheme = localStorage.getItem("lc_theme") || "dark";
   document.documentElement.dataset.theme = savedTheme;
