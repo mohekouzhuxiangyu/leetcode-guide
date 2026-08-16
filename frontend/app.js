@@ -1675,16 +1675,18 @@ async function loadGroups() {
 
 function renderGroupFilter() {
   const el = $("group-filter");
-  let html = `<button class="cat-chip${state.groupFilter === "全部" ? " active" : ""}" data-grp="__all__">全部 (${state.historyItems.length})</button>`;
+  // 分组区只展示真实分组（不含"全部"）；再次点击已选分组可取消筛选
+  let html = "";
   for (const g of state.groups) {
     const name = g.name || "未分组";
     html += `<button class="cat-chip${state.groupFilter === g.name ? " active" : ""}" data-grp="${escapeHtml(g.name)}">${escapeHtml(name)} (${g.count})</button>`;
   }
-  el.innerHTML = html;
+  el.innerHTML = html || `<span class="history-empty">暂无分组</span>`;
   el.querySelectorAll(".cat-chip").forEach((b) => {
     b.addEventListener("click", () => {
-      state.groupFilter = b.dataset.grp === "__all__" ? "全部" : b.dataset.grp;
-      el.querySelectorAll(".cat-chip").forEach((x) => x.classList.toggle("active", x === b));
+      const grp = b.dataset.grp;
+      state.groupFilter = state.groupFilter === grp ? "全部" : grp;
+      el.querySelectorAll(".cat-chip").forEach((x) => x.classList.toggle("active", x.dataset.grp === state.groupFilter));
       renderHistoryList(state.historyItems);
     });
   });
