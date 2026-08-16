@@ -368,8 +368,12 @@ async function loadRecord(slug) {
 /* ---------- 初始化 ---------- */
 
 function init() {
-  mermaid.initialize({ startOnLoad: false, theme: "neutral", securityLevel: "loose" });
-  marked.setOptions({ breaks: true, gfm: true });
+  if (typeof mermaid !== "undefined") {
+    try { mermaid.initialize({ startOnLoad: false, theme: "neutral", securityLevel: "loose" }); } catch (e) {}
+  }
+  if (typeof marked !== "undefined") {
+    try { marked.setOptions({ breaks: true, gfm: true }); } catch (e) {}
+  }
 
   $("btn-generate").addEventListener("click", () => {
     const url = $("url-input").value.trim();
