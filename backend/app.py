@@ -578,6 +578,25 @@ async def save_note(slug: str, req: NoteRequest, user: dict = Depends(require_vi
     return {"ok": True, "slug": slug}
 
 
+# ---------------- 收款码探测 ----------------
+
+@app.get("/api/qrcodes")
+async def get_qrcodes() -> dict:
+    """探测收款码文件（兼容大小写扩展名），返回可访问的 URL 或 null。"""
+    qr_dir = FRONTEND_DIR / "qrcodes"
+    exts = [".png", ".jpg", ".jpeg", ".JPG", ".PNG", ".JPEG"]
+    result = {}
+    for name in ("wechat", "alipay"):
+        found = None
+        for ext in exts:
+            p = qr_dir / (name + ext)
+            if p.is_file():
+                found = f"/assets/qrcodes/{name}{ext}"
+                break
+        result[name] = found
+    return result
+
+
 # ---------------- 历史记录（按用户隔离） ----------------
 
 @app.get("/api/history")

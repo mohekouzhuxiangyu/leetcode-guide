@@ -204,8 +204,34 @@ function renderUserArea() {
   });
 }
 
+/* 收款码探测：后端返回实际存在的文件地址，前端直接设置（不依赖内联 onerror） */
+async function loadQrcodes() {
+  try {
+    const resp = await fetch("/api/qrcodes");
+    const data = await resp.json();
+    const setQr = (id, url) => {
+      const img = document.getElementById(id);
+      const missing = document.getElementById(id + "-missing");
+      if (!img) return;
+      if (url) {
+        img.src = url;
+        img.style.display = "";
+        if (missing) missing.classList.add("hidden");
+      } else {
+        img.style.display = "none";
+        if (missing) missing.classList.remove("hidden");
+      }
+    };
+    setQr("qr-wechat", data.wechat);
+    setQr("qr-alipay", data.alipay);
+  } catch {
+    /* 忽略 */
+  }
+}
+
 /* 👑 VIP 会员 / 支持页面（升级 VIP 自助开通） */
 function openVipPanel() {
+  loadQrcodes();
   const amounts = [1, 6.6, 9.9, 18.8, 66];
   const chipsEl = $("vip-donate-amounts");
   chipsEl.innerHTML = amounts
@@ -1927,6 +1953,7 @@ function init() {
   loadHistory();
   loadGroups();
   initAuth();  // 认证初始化：恢复登录态并加载数据
+  loadQrcodes(); // 收款码探测（兼容大小写扩展名）
 
   // ?slug= 深链：直接加载历史记录
   const params = new URLSearchParams(location.search);
