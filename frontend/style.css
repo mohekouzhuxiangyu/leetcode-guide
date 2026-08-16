@@ -268,7 +268,18 @@ html { overflow-y: scroll; }
   color: var(--text-dim);
   font-style: italic;
 }
-.problem-desc { white-space: pre-wrap; word-break: break-word; }
+.problem-desc { word-break: break-word; line-height: 1.8; }
+.problem-desc p { margin: 8px 0; }
+.problem-desc ul, .problem-constraints ul { padding-left: 22px; margin: 6px 0; }
+.problem-desc li, .problem-constraints li { margin: 3px 0; }
+.problem-desc code, .problem-constraints code {
+  background: rgba(79, 140, 255, 0.12);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 13px;
+}
+.problem-desc strong { color: var(--green); }
 .sec-title {
   margin: 20px 0 10px;
   font-size: 15px;
@@ -287,7 +298,7 @@ html { overflow-y: scroll; }
   font-size: 13px;
   line-height: 1.7;
 }
-.problem-constraints { white-space: pre-wrap; word-break: break-word; }
+.problem-constraints { word-break: break-word; line-height: 1.8; }
 
 /* 算法解析 */
 #tab-analysis { font-size: 14px; line-height: 1.8; }

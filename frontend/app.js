@@ -410,7 +410,8 @@ function renderProblemTab(problem, record) {
   let html = "";
   if (zh || content) {
     const { description, examples, constraints } = parseProblemSections(zh || content);
-    if (description) html += `<div class="problem-desc">${escapeHtml(description)}</div>`;
+    // 描述与约束支持 Markdown（反引号/加粗/列表正确渲染），示例保持代码块
+    if (description) html += `<div class="problem-desc">${renderMarkdown(description)}</div>`;
     if (examples.length) {
       html += `<h3 class="sec-title">📌 示例</h3>`;
       for (const ex of examples) {
@@ -420,7 +421,7 @@ function renderProblemTab(problem, record) {
       }
     }
     if (constraints) {
-      html += `<h3 class="sec-title">⚠️ 约束</h3><div class="problem-constraints">${escapeHtml(constraints)}</div>`;
+      html += `<h3 class="sec-title">⚠️ 约束</h3><div class="problem-constraints">${renderMarkdown(constraints)}</div>`;
     }
   } else {
     html += `<div class="problem-empty">（未获取到题目原文，请查看算法解析或<a href="${escapeHtml(problem.url || record.url || "#")}" target="_blank">原题链接</a>）</div>`;
