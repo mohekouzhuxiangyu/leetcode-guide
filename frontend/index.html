@@ -63,22 +63,30 @@
     <section id="input-panel" class="panel">
       <h1>输入力扣题目链接</h1>
       <p class="subtitle">粘贴 Hot 100 任意一题的链接，Agent 自动生成算法解析、动画演示、流程图与多语言代码</p>
-      <div class="input-row">
-        <input id="url-input" type="text" spellcheck="false"
-               placeholder="https://leetcode.cn/problems/two-sum/ 或 https://leetcode.com/problems/..." />
-        <button id="btn-generate" class="btn btn-primary">⚡ 生成解析</button>
+
+      <div class="input-tabs">
+        <button class="input-tab active" data-input-tab="single">⚡ 单条生成</button>
+        <button class="input-tab" data-input-tab="batch">🚀 批量生成</button>
       </div>
-      <div class="batch-mode-row">
-        <button id="btn-toggle-batch" class="btn btn-small">📥 批量输入</button>
+
+      <div id="input-single" class="input-tab-panel">
+        <div class="input-row">
+          <input id="url-input" type="text" spellcheck="false"
+                 placeholder="https://leetcode.cn/problems/two-sum/ 或 https://leetcode.com/problems/..." />
+          <button id="btn-generate" class="btn btn-primary">⚡ 生成解析</button>
+        </div>
       </div>
-      <div id="batch-input-panel" class="batch-input-panel hidden">
-        <textarea id="urls-input" rows="4" spellcheck="false"
+
+      <div id="input-batch" class="input-tab-panel hidden">
+        <textarea id="urls-input" rows="5" spellcheck="false"
           placeholder="每行一个力扣题目链接，例如：&#10;https://leetcode.cn/problems/two-sum/&#10;https://leetcode.com/problems/valid-parentheses/&#10;https://leetcode.cn/problems/merge-two-sorted-lists/"></textarea>
         <div class="batch-input-row">
           <select id="batch-group-select" class="batch-group-select" title="批量生成的题目归入哪个分组"></select>
           <button id="btn-batch-start" class="btn btn-primary">🚀 批量生成</button>
         </div>
+        <p class="hint group-hint">💡 提示：批量生成的题目会加入「<span id="batch-group-hint">未分组</span>」</p>
       </div>
+
       <p class="hint">支持 leetcode.com 与 leetcode.cn 链接；示例：
         <span class="example" data-url="https://leetcode.cn/problems/two-sum/">两数之和</span> ·
         <span class="example" data-url="https://leetcode.com/problems/longest-substring-without-repeating-characters/">无重复字符的最长子串</span> ·

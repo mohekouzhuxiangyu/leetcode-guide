@@ -1010,3 +1010,27 @@ mark {
 .note-preview blockquote { border-left: 3px solid var(--accent); padding-left: 12px; color: var(--text-dim); margin: 10px 0; }
 .note-preview table { border-collapse: collapse; margin: 10px 0; }
 .note-preview th, .note-preview td { border: 1px solid var(--border); padding: 6px 12px; }
+
+/* ---------- 输入区标签页（单条 / 批量） ---------- */
+.input-tabs {
+  display: flex;
+  gap: 6px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 14px;
+}
+.input-tab {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 14px;
+  padding: 8px 18px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 0.15s;
+}
+.input-tab:hover { color: var(--text); }
+.input-tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+.input-tab-panel .input-row { margin-bottom: 4px; }
+.group-hint { margin-top: 10px; font-size: 12px; }
+.group-hint span { color: var(--accent-hover); font-weight: 600; }

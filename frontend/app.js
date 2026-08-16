@@ -1485,6 +1485,20 @@ function populateGroupSelect() {
     html += `<option value="${escapeHtml(g.name)}">${escapeHtml(g.name)}（${g.count}）</option>`;
   }
   sel.innerHTML = html;
+  updateBatchGroupHint();
+}
+
+/* 批量分组提示：实时显示选中的分组 */
+function updateBatchGroupHint() {
+  const hint = $("batch-group-hint");
+  const sel = $("batch-group-select");
+  if (!hint || !sel) return;
+  hint.textContent = sel.value || "未分组";
+}
+
+function bindBatchGroupHint() {
+  const sel = $("batch-group-select");
+  if (sel) sel.addEventListener("change", updateBatchGroupHint);
 }
 
 async function createGroup() {
@@ -1506,7 +1520,7 @@ async function createGroup() {
       renderHistoryList(state.historyItems);
       // 同步到批量分组下拉
       const sel = $("batch-group-select");
-      if (sel) sel.value = name;
+      if (sel) { sel.value = name; updateBatchGroupHint(); }
       toast(`已创建分组「${name}」`);
     } catch (err) {
       toast("创建分组失败：" + err.message, true);
@@ -1664,15 +1678,18 @@ function init() {
 
   // 分组
   $("btn-add-group").addEventListener("click", createGroup);
-  // 批量输入模式
-  $("btn-toggle-batch").addEventListener("click", () => {
-    const panel = $("batch-input-panel");
-    const btn = $("btn-toggle-batch");
-    panel.classList.toggle("hidden");
-    btn.textContent = panel.classList.contains("hidden") ? "📥 批量输入" : "📤 收起批量输入";
+  // 输入区标签页：单条生成 / 批量生成
+  document.querySelectorAll(".input-tab").forEach((t) => {
+    t.addEventListener("click", () => {
+      document.querySelectorAll(".input-tab").forEach((x) => x.classList.toggle("active", x === t));
+      const name = t.dataset.inputTab;
+      $("input-single").classList.toggle("hidden", name !== "single");
+      $("input-batch").classList.toggle("hidden", name !== "batch");
+    });
   });
   $("btn-batch-start").addEventListener("click", startBatch);
   $("btn-batch-stop").addEventListener("click", stopBatch);
+  bindBatchGroupHint();
 
   // 题目心得编辑器
   bindNoteEditor();
