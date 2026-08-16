@@ -45,6 +45,7 @@ def list_records() -> list[dict]:
                 "difficulty": rec.get("difficulty", "Unknown"),
                 "tags": rec.get("tags", []),
                 "category": rec.get("category", "其他"),
+                "url": rec.get("url") or f"https://leetcode.com/problems/{slug}/",
                 "created_at": rec.get("created_at"),
                 "updated_at": rec.get("updated_at"),
             }

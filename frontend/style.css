@@ -112,6 +112,18 @@ body {
   padding: 0 2px;
 }
 .history-item .h-del:hover { color: var(--red); }
+.h-actions { display: flex; align-items: center; gap: 8px; }
+.h-link {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 11px;
+  padding: 1px 7px;
+  border: 1px solid rgba(79, 140, 255, 0.45);
+  border-radius: 6px;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.h-link:hover { background: rgba(79, 140, 255, 0.18); text-decoration: none; }
 
 /* ---------- 主区域（宽度固定，避免内容变化时布局抖动） ---------- */
 html { overflow-y: scroll; }

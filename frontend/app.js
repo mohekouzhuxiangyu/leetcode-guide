@@ -808,13 +808,19 @@ function makeHistoryItem(item) {
   const li = document.createElement("li");
   li.className = "history-item";
   li.dataset.slug = item.slug;
+  const linkUrl = item.url || "https://leetcode.com/problems/" + item.slug + "/";
   li.innerHTML = `
     <div class="h-title">${escapeHtml(item.title)}</div>
     <div class="h-meta">
       <span>${DIFF_ZH[item.difficulty] || item.difficulty} · ${escapeHtml((item.updated_at || "").slice(0, 16))}</span>
-      <button class="h-del" title="删除记录">🗑</button>
+      <span class="h-actions">
+        <a class="h-link" href="${escapeHtml(linkUrl)}" target="_blank" rel="noopener" title="打开力扣原题">🔗 原题</a>
+        <button class="h-del" title="删除记录">🗑</button>
+      </span>
     </div>`;
   li.querySelector(".h-title").addEventListener("click", () => loadRecord(item.slug));
+  // 点原题链接只跳转，不触发加载记录
+  li.querySelector(".h-link").addEventListener("click", (e) => e.stopPropagation());
   li.querySelector(".h-del").addEventListener("click", async (e) => {
     e.stopPropagation();
     if (!confirm(`删除「${item.title}」的记录？`)) return;
