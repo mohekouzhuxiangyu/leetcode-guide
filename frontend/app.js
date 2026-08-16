@@ -22,7 +22,7 @@ const state = {
   renderedTabs: {},
   cache: {},
   categoryFilter: "全部",
-  groupFilter: "全部",
+  groupFilter: "hot100",  // 刷新页面默认选中 hot100 共享分组
   difficultyFilter: "全部",
   searchQuery: "",
   tplFilter: "全部",
@@ -159,6 +159,9 @@ function handleAuthExpired() {
   setToken("");
   auth.user = null;
   state.templates = null;
+  state.groupFilter = "hot100";
+  state.categoryFilter = "全部";
+  state.difficultyFilter = "全部";
   renderUserArea();
   toast("登录已过期，请重新登录", true);
 }
@@ -440,6 +443,9 @@ async function logoutUser() {
   state.historyItems = [];
   state.groups = [];
   state.templates = null; // 退出后回退为内置模板
+  state.groupFilter = "hot100"; // 退出后默认回到 hot100 共享分组
+  state.categoryFilter = "全部";
+  state.difficultyFilter = "全部";
   renderGroupFilter();
   renderHistoryList([]);
   hide($("batch-panel"));
@@ -1736,8 +1742,7 @@ async function loadHistory() {
     if (!resp.ok) return;
     const data = await resp.json();
     state.historyItems = data.items || [];
-    renderCategoryFilter(state.historyItems);
-    renderDifficultyFilter(state.historyItems);
+    refreshFilterChips(); // 分类/难度数字按当前分组计算
     renderHistoryList(state.historyItems);
   } catch {
     /* 忽略历史加载失败 */
@@ -1765,6 +1770,20 @@ async function loadRecord(slug) {
 
 /* ---------- 分组 ---------- */
 
+/* 当前分组筛选下可见的题目（分类/难度筛选的数字按此计算，随分组同步刷新） */
+function groupScopedItems(items) {
+  if (state.groupFilter === "全部") return items;
+  if (state.groupFilter === "") return items.filter((i) => !(i.groups || []).length);
+  return items.filter((i) => (i.groups || []).includes(state.groupFilter));
+}
+
+/* 按当前分组重算「算法分类 / 难度」筛选 chips */
+function refreshFilterChips() {
+  const scoped = groupScopedItems(state.historyItems);
+  renderCategoryFilter(scoped);
+  renderDifficultyFilter(scoped);
+}
+
 async function loadGroups() {
   try {
     const resp = await apiFetch("/api/groups");
@@ -1781,29 +1800,66 @@ async function loadGroups() {
 
 function renderGroupFilter() {
   const el = $("group-filter");
-  // 分组区只展示真实分组（不含"全部"）；再次点击已选分组可取消筛选
+  // 只展示真实分组（不含"全部"）；再次点击已选分组取消筛选；
+  // 共享分组（hot100）不可删除，用户分组可删除（🗑）
   let html = "";
   for (const g of state.groups) {
     const name = g.name || "未分组";
-    html += `<button class="cat-chip${state.groupFilter === g.name ? " active" : ""}" data-grp="${escapeHtml(g.name)}">${escapeHtml(name)} (${g.count})</button>`;
+    const del = (!g.shared && g.name !== "") ? `<span class="g-del" title="删除分组" data-del="${escapeHtml(g.name)}">🗑</span>` : "";
+    html += `<button class="cat-chip${state.groupFilter === g.name ? " active" : ""}" data-grp="${escapeHtml(g.name)}">${escapeHtml(name)} (${g.count})${del}</button>`;
   }
   el.innerHTML = html || `<span class="history-empty">暂无分组</span>`;
   el.querySelectorAll(".cat-chip").forEach((b) => {
     b.addEventListener("click", () => {
       const grp = b.dataset.grp;
       state.groupFilter = state.groupFilter === grp ? "全部" : grp;
+      // 分组切换后：分类/难度数字随分组重算，选择重置
+      state.categoryFilter = "全部";
+      state.difficultyFilter = "全部";
       el.querySelectorAll(".cat-chip").forEach((x) => x.classList.toggle("active", x.dataset.grp === state.groupFilter));
+      refreshFilterChips();
       renderHistoryList(state.historyItems);
     });
   });
+  el.querySelectorAll(".g-del").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      deleteGroup(btn.dataset.del);
+    });
+  });
+}
+
+function deleteGroup(name) {
+  if (!auth.user) { toast("请先登录", true); showLoginModal(); return; }
+  confirmAction(
+    "删除分组",
+    `确定删除分组「${escapeHtml(name)}」？组内题目的分组归属将被移除（题目本身保留）。`,
+    async () => {
+      try {
+        const resp = await apiFetch("/api/groups/" + encodeURIComponent(name), { method: "DELETE" });
+        const data = await resp.json();
+        if (!resp.ok) { toast(data.detail || "删除失败", true); return; }
+        if (state.groupFilter === name) state.groupFilter = "hot100";
+        state.categoryFilter = "全部";
+        state.difficultyFilter = "全部";
+        await loadGroups();
+        refreshFilterChips();
+        renderHistoryList(state.historyItems);
+        toast(`已删除分组「${name}」`);
+      } catch (err) {
+        toast("删除失败：" + err.message, true);
+      }
+    }
+  );
 }
 
 function populateGroupSelect() {
   const sel = $("batch-group-select");
   if (!sel) return;
+  // 批量目标分组只能是自己的分组（hot100 等共享分组不可作为批量目标）
   let html = `<option value="">未分组</option>`;
   for (const g of state.groups) {
-    if (!g.name) continue;
+    if (!g.name || g.shared) continue;
     html += `<option value="${escapeHtml(g.name)}">${escapeHtml(g.name)}（${g.count}）</option>`;
   }
   sel.innerHTML = html;
@@ -1824,7 +1880,7 @@ function bindBatchGroupHint() {
 }
 
 async function createGroup() {
-  if (!requireVip()) return;
+  if (!auth.user) { toast("请先登录", true); showLoginModal(); return; }
   promptText("新建分组", "输入分组名称", "", async (name) => {
     try {
       const resp = await apiFetch("/api/groups", {
@@ -1838,7 +1894,10 @@ async function createGroup() {
       await loadGroups();
       // 默认选中新分组
       state.groupFilter = name;
+      state.categoryFilter = "全部";
+      state.difficultyFilter = "全部";
       renderGroupFilter();
+      refreshFilterChips();
       renderHistoryList(state.historyItems);
       // 同步到批量分组下拉
       const sel = $("batch-group-select");

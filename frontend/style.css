@@ -524,6 +524,14 @@ html { overflow-y: scroll; }
   color: #fff;
   font-weight: 600;
 }
+/* 分组 chip 内的删除按钮（hot100 等共享分组不显示） */
+.g-del {
+  margin-left: 6px;
+  cursor: pointer;
+  opacity: 0.7;
+  font-size: 12px;
+}
+.g-del:hover { opacity: 1; }
 
 /* 历史分组标题 */
 .history-group {

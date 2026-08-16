@@ -478,6 +478,13 @@ async def batch_start(req: BatchStartRequest, user: dict = Depends(get_current_u
             queue.append({"url": url, "slug": slug, "group": (req.group or "").strip(), "user_id": user["id"]})
         if not queue:
             raise HTTPException(status_code=400, detail="没有有效的题目链接（需包含 /problems/ 路径）")
+        target_group = (req.group or "").strip()
+        if target_group:
+            if _is_shared_group(target_group):
+                raise HTTPException(status_code=400, detail="不能归入系统共享分组（hot100）")
+            limit = _group_limit(user)
+            if not history.user_has_group(user["id"], target_group) and history.user_group_count(user["id"]) >= limit:
+                raise HTTPException(status_code=400, detail=f"分组数量已达上限（{limit} 个）")
         # 分组规则：组内不重复；不同分组可重复但复用同一份生成结果（不重复生成、不扣费）
         existed = query(
             "SELECT slug FROM records WHERE user_id = %s AND slug = ANY(%s)",
@@ -485,7 +492,6 @@ async def batch_start(req: BatchStartRequest, user: dict = Depends(get_current_u
             fetch="all",
         )
         existed_slugs = {r["slug"] for r in existed}
-        target_group = (req.group or "").strip()
         in_group_slugs = history.slugs_in_group(user["id"], target_group, [item["slug"] for item in queue]) if target_group else set()
         to_generate = [item for item in queue if item["slug"] not in existed_slugs]
         to_reuse = [item for item in queue if item["slug"] in existed_slugs and item["slug"] not in in_group_slugs]
@@ -538,6 +544,21 @@ async def batch_status() -> dict:
 
 # ---------------- 分组 ----------------
 
+GROUP_LIMIT_REGULAR = 3   # 普通用户最多分组数
+GROUP_LIMIT_VIP = 100     # VIP 用户最多分组数
+
+
+def _group_limit(user: dict) -> int:
+    """分组数量上限：普通 3 个，VIP 100 个。"""
+    row = auth.get_user_row(user["id"])
+    return GROUP_LIMIT_VIP if auth.is_vip(row) else GROUP_LIMIT_REGULAR
+
+
+def _is_shared_group(name: str) -> bool:
+    """是否为共享分组（hot100 等，系统保留、不可删除/占用）。"""
+    return query("SELECT 1 FROM groups WHERE user_id IS NULL AND name = %s", (name,), fetch="one") is not None
+
+
 class GroupRequest(BaseModel):
     name: str
 
@@ -553,23 +574,44 @@ async def list_groups_api(user: Optional[dict] = Depends(get_current_user_option
 
 
 @app.post("/api/groups")
-async def create_group_api(req: GroupRequest, user: dict = Depends(require_vip)) -> dict:
+async def create_group_api(req: GroupRequest, user: dict = Depends(get_current_user)) -> dict:
+    """创建分组：登录即可；普通用户最多 3 个分组，VIP 最多 100 个。"""
     name = (req.name or "").strip()
     if not name:
         raise HTTPException(status_code=400, detail="分组名称不能为空")
+    if _is_shared_group(name):
+        raise HTTPException(status_code=400, detail=f"「{name}」为系统共享分组，不能创建同名分组")
+    if history.user_has_group(user["id"], name):
+        return {"ok": False, "name": name}
+    limit = _group_limit(user)
+    if history.user_group_count(user["id"]) >= limit:
+        raise HTTPException(status_code=400, detail=f"分组数量已达上限（{limit} 个）")
     ok = history.create_group(user["id"], name)
     return {"ok": ok, "name": name}
 
 
 @app.delete("/api/groups/{name}")
-async def delete_group_api(name: str, user: dict = Depends(require_vip)) -> dict:
+async def delete_group_api(name: str, user: dict = Depends(get_current_user)) -> dict:
+    """删除自己的分组（hot100 等共享分组不可删除）。"""
+    if not name:
+        raise HTTPException(status_code=400, detail="分组名称不能为空")
+    if _is_shared_group(name):
+        raise HTTPException(status_code=400, detail="hot100 为共享分组，不可删除")
     history.delete_group(user["id"], name)
     return {"deleted": name}
 
 
 @app.post("/api/records/move")
-async def move_records_api(req: MoveRequest, user: dict = Depends(require_vip)) -> dict:
-    n = history.move_records(user["id"], req.slugs, (req.group or "").strip())
+async def move_records_api(req: MoveRequest, user: dict = Depends(get_current_user)) -> dict:
+    """把记录加入分组；目标分组为新建分组时同样受数量上限约束。"""
+    group = (req.group or "").strip()
+    if group:
+        if _is_shared_group(group):
+            raise HTTPException(status_code=400, detail="不能归入系统共享分组")
+        limit = _group_limit(user)
+        if not history.user_has_group(user["id"], group) and history.user_group_count(user["id"]) >= limit:
+            raise HTTPException(status_code=400, detail=f"分组数量已达上限（{limit} 个）")
+    n = history.move_records(user["id"], req.slugs, group)
     return {"moved": n}
 
 

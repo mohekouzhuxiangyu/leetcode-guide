@@ -262,6 +262,10 @@ def slugs_in_group(user_id: int, group: str, slugs: list) -> set:
 
 def list_groups(user_id: Optional[int]) -> list[dict]:
     """返回分组列表（共享分组 + 用户分组），带题数。游客只看到共享分组。"""
+    shared_names = {
+        r["name"]
+        for r in query("SELECT name FROM groups WHERE user_id IS NULL", fetch="all")
+    }
     if user_id is None:
         explicit = [
             r["name"]
@@ -308,10 +312,41 @@ def list_groups(user_id: Optional[int]) -> list[dict]:
         counts[r["group_name"]] = counts.get(r["group_name"], 0) + r["c"]
     ungrouped = ungrouped_row["c"] if ungrouped_row else 0
     names = list(dict.fromkeys(explicit + list(counts.keys())))
-    result = [{"name": n, "count": counts.get(n, 0), "explicit": n in explicit} for n in names]
+    result = [
+        {"name": n, "count": counts.get(n, 0), "explicit": n in explicit, "shared": n in shared_names}
+        for n in names
+    ]
     if ungrouped > 0:
-        result.insert(0, {"name": "", "count": ungrouped, "explicit": False})
+        result.insert(0, {"name": "", "count": ungrouped, "explicit": False, "shared": False})
     return result
+
+
+def user_group_count(user_id: int) -> int:
+    """用户拥有的分组数（显式创建 + 隐式由批量/移动产生的分组，去重）。"""
+    row = query(
+        """SELECT COUNT(*) AS c FROM (
+             SELECT DISTINCT group_name AS n FROM record_groups WHERE user_id = %s
+             UNION
+             SELECT name AS n FROM groups WHERE user_id = %s
+           ) t""",
+        (user_id, user_id),
+        fetch="one",
+    )
+    return row["c"] if row else 0
+
+
+def user_has_group(user_id: int, name: str) -> bool:
+    """该分组名是否已是用户的分组（显式或隐式）。"""
+    row = query(
+        """SELECT 1 FROM (
+             SELECT DISTINCT group_name AS n FROM record_groups WHERE user_id = %s
+             UNION
+             SELECT name AS n FROM groups WHERE user_id = %s
+           ) t WHERE n = %s""",
+        (user_id, user_id, name),
+        fetch="one",
+    )
+    return row is not None
 
 
 def create_group(user_id: int, name: str) -> bool:
