@@ -1190,8 +1190,8 @@ mark {
 .donate-qr { text-align: center; }
 .donate-qr-title { font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text); }
 .donate-qr img {
-  width: 180px;
-  height: 180px;
+  width: 240px;
+  height: 240px;
   object-fit: contain;
   background: #fff;
   border: 1px solid var(--border);
@@ -1214,3 +1214,21 @@ mark {
   border: 1px solid rgba(79, 140, 255, 0.4);
   vertical-align: middle;
 }
+
+/* ---------- VIP 会员页面 ---------- */
+.vip-page { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 10px; }
+.vip-left h3, .vip-right h3 { color: var(--accent-hover); margin: 20px 0 10px; font-size: 16px; }
+.vip-left h3:first-child { margin-top: 0; }
+.vip-left ul { padding-left: 22px; line-height: 2.1; color: var(--text); }
+.donate-slider { display: flex; align-items: center; gap: 14px; margin: 12px 0 4px; }
+.donate-slider input[type="range"] { flex: 1; accent-color: var(--accent); cursor: pointer; }
+.donate-amount-show {
+  font-size: 26px;
+  font-weight: 800;
+  color: #f59e0b;
+  min-width: 96px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+#btn-self-upgrade { margin-top: 14px; }
+@media (max-width: 860px) { .vip-page { grid-template-columns: 1fr; } }

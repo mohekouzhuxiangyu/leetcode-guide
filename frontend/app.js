@@ -172,7 +172,7 @@ function isVip() {
 /* VIP 权限门控：未登录弹登录，未开通弹捐款支持 */
 function requireVip() {
   if (!auth.user) { showLoginModal(); return false; }
-  if (!isVip()) { showDonateModal(); return false; }
+  if (!isVip()) { openVipPanel(); return false; }
   return true;
 }
 
@@ -204,37 +204,39 @@ function renderUserArea() {
   });
 }
 
-/* 💖 升级 VIP / 支持（微信/支付宝收款码，最低 1 元） */
-function showDonateModal() {
+/* 👑 VIP 会员 / 支持页面（升级 VIP 自助开通） */
+function openVipPanel() {
   const amounts = [1, 6.6, 9.9, 18.8, 66];
-  let body = `<div class="modal-msg">📊 计费说明：<b>普通用户每道题 1 元</b>，<b>VIP 每道题 0.1 元</b>；1 次 = 0.1 元。</div>
-    <div class="modal-msg">👑 升级 VIP：扫码捐赠，<b>最低 1 元</b>、最高不限，联系管理员开通永久 VIP（不含次数，生成仍按 0.1 元/题扣次）。</div>
-    <div class="donate-amounts">
-      ${amounts.map((a) => `<button class="donate-amt" data-amt="${a}">¥${a}</button>`).join("")}
-      <input class="donate-custom" id="donate-custom" type="number" min="1" step="0.01" placeholder="自定义金额(≥1元) ¥" />
-    </div>
-    <div class="donate-qrs">
-      <div class="donate-qr">
-        <div class="donate-qr-title">💚 微信收款</div>
-        <img id="qr-wechat" src="/assets/qrcodes/wechat.png" alt="微信收款码"
-             onerror="qrOnError(this,'/assets/qrcodes/wechat')" />
-        <div class="donate-qr-missing hidden" id="qr-wechat-missing">管理员尚未上传收款码</div>
-      </div>
-      <div class="donate-qr">
-        <div class="donate-qr-title">💙 支付宝收款</div>
-        <img id="qr-alipay" src="/assets/qrcodes/alipay.png" alt="支付宝收款码"
-             onerror="qrOnError(this,'/assets/qrcodes/alipay')" />
-        <div class="donate-qr-missing hidden" id="qr-alipay-missing">管理员尚未上传收款码</div>
-      </div>
-    </div>
-    <div class="modal-msg donate-tip">💡 打赏后请在<b>备注中写明你的用户名</b>，联系管理员开通 VIP 或充值次数（1 元 = 10 次）。</div>`;
-  openModal("💖 升级 VIP / 支持", body, `<button class="btn btn-small" id="modal-cancel">关闭</button>`);
-  $("modal-cancel").addEventListener("click", closeModal);
-  document.querySelectorAll(".donate-amt").forEach((b) => {
+  const chipsEl = $("vip-donate-amounts");
+  chipsEl.innerHTML = amounts
+    .map((a) => `<button class="donate-amt" data-amt="${a}">¥${a}</button>`)
+    .join("");
+  const slider = $("donate-slider");
+  const valEl = $("donate-amount-val");
+  const btnAmt = $("self-upgrade-amount");
+  const syncAmount = (v) => {
+    const s = (Math.round(parseFloat(v) * 10) / 10).toFixed(1);
+    valEl.textContent = s;
+    btnAmt.textContent = s;
+  };
+  chipsEl.querySelectorAll(".donate-amt").forEach((b) => {
     b.addEventListener("click", () => {
-      document.querySelectorAll(".donate-amt").forEach((x) => x.classList.toggle("active", x === b));
+      chipsEl.querySelectorAll(".donate-amt").forEach((x) => x.classList.toggle("active", x === b));
+      slider.value = b.dataset.amt;
+      syncAmount(slider.value);
     });
   });
+  slider.addEventListener("input", () => {
+    chipsEl.querySelectorAll(".donate-amt").forEach((x) => x.classList.remove("active"));
+    syncAmount(slider.value);
+  });
+  syncAmount(slider.value);
+  hide($("input-panel"));
+  hide($("progress-panel"));
+  hide($("result-panel"));
+  hide($("error-panel"));
+  hide($("templates-panel"));
+  show($("vip-panel"));
 }
 
 /* 收款码图片加载失败时降级：尝试 .jpg，仍失败则隐藏并提示 */
@@ -615,6 +617,7 @@ function showInputOnly() {
   hide($("result-panel"));
   hide($("error-panel"));
   hide($("templates-panel"));
+  hide($("vip-panel"));
   show($("input-panel"));
 }
 
@@ -623,6 +626,7 @@ function showProgress() {
   hide($("result-panel"));
   hide($("error-panel"));
   hide($("templates-panel"));
+  hide($("vip-panel"));
   show($("progress-panel"));
   $("progress-steps").querySelectorAll("li").forEach((li) => {
     li.classList.remove("active", "done");
@@ -635,6 +639,7 @@ function showResult() {
   hide($("progress-panel"));
   hide($("error-panel"));
   hide($("templates-panel"));
+  hide($("vip-panel"));
   show($("result-panel"));
 }
 
@@ -643,6 +648,7 @@ function showError(msg) {
   hide($("progress-panel"));
   hide($("result-panel"));
   hide($("templates-panel"));
+  hide($("vip-panel"));
   const el = $("error-panel");
   el.textContent = msg;
   show(el);
@@ -1317,6 +1323,29 @@ function bindNoteEditor() {
   });
 }
 
+/* VIP 页面：自助开通绑定 */
+function bindVipPanel() {
+  $("btn-self-upgrade").addEventListener("click", async () => {
+    if (!auth.user) { showLoginModal(); return; }
+    const amount = parseFloat($("donate-amount-val").textContent) || 1;
+    try {
+      const resp = await apiFetch("/api/vip/self-upgrade", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) { toast(data.detail || "操作失败", true); return; }
+      auth.user = data.user;
+      renderUserArea();
+      toast("🎉 VIP 开通成功（+%s 次）".replace("%s", data.credits_added));
+      showInputOnly();
+    } catch (err) {
+      toast("操作失败：" + err.message, true);
+    }
+  });
+}
+
 /* ---------- 标签页切换（懒渲染） ---------- */
 
 function switchTab(name) {
@@ -1801,6 +1830,8 @@ function init() {
 
   $("btn-templates").addEventListener("click", openTemplatesLibrary);
   $("btn-templates-back").addEventListener("click", showInputOnly);
+  $("btn-vip-back").addEventListener("click", showInputOnly);
+  bindVipPanel();
   // 模板库搜索
   $("tpl-search").addEventListener("input", () => {
     state.tplQuery = $("tpl-search").value;
@@ -1816,7 +1847,7 @@ function init() {
       if (act === "login") showLoginModal();
       else if (act === "register") showRegisterModal();
       else if (act === "logout") logoutUser();
-      else if (act === "vip") showDonateModal();
+      else if (act === "vip") openVipPanel();
       else if (act === "admin") showGrantModal();
     });
   });

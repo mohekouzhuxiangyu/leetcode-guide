@@ -210,6 +210,61 @@
       <div id="tpl-tags" class="category-filter"></div>
       <div id="templates-list" class="templates-list"></div>
     </section>
+
+    <!-- VIP 会员 / 支持 -->
+    <section id="vip-panel" class="panel hidden">
+      <div class="templates-header">
+        <h2>👑 VIP 会员 · 支持本站</h2>
+        <button id="btn-vip-back" class="btn btn-small">← 返回</button>
+      </div>
+      <div class="vip-page">
+        <div class="vip-left">
+          <h3>📊 计费规则</h3>
+          <ul>
+            <li>普通用户：每道题 <b>1 元</b>（10 次）</li>
+            <li>VIP 用户：每道题 <b>0.1 元</b>（1 次）</li>
+            <li>1 次 = 0.1 元；捐赠 1 元 = 10 次</li>
+          </ul>
+          <h3>👑 VIP 权益</h3>
+          <ul>
+            <li><b>永久 VIP</b>，无期限限制</li>
+            <li>生成题目享受 <b>0.1 元/题</b> 优惠价</li>
+            <li>删除题目、分组管理、心得文档等全部功能</li>
+          </ul>
+          <h3>💰 网站维护与运维费用</h3>
+          <ul>
+            <li>服务器 / 域名 / 带宽 / 备份</li>
+            <li>DeepSeek 等大模型 API 调用费用（每次生成消耗算力）</li>
+            <li>数据库维护、安全加固与持续的开发迭代时间</li>
+          </ul>
+          <p class="donate-tip">本站长期免费开放浏览 hot100，您的每一笔支持都用于维持网站持续运行 🙏</p>
+        </div>
+        <div class="vip-right">
+          <h3>💖 升级 VIP（扫码捐赠，自动开通）</h3>
+          <div class="donate-amounts" id="vip-donate-amounts"></div>
+          <div class="donate-slider">
+            <input type="range" id="donate-slider" min="1" max="100" step="0.5" />
+            <div class="donate-amount-show">¥ <span id="donate-amount-val">6.5</span></div>
+          </div>
+          <div class="donate-qrs">
+            <div class="donate-qr">
+              <div class="donate-qr-title">💚 微信收款</div>
+              <img id="qr-wechat" src="/assets/qrcodes/wechat.png" alt="微信收款码"
+                   onerror="qrOnError(this,'/assets/qrcodes/wechat')" />
+              <div class="donate-qr-missing hidden" id="qr-wechat-missing">管理员尚未上传收款码</div>
+            </div>
+            <div class="donate-qr">
+              <div class="donate-qr-title">💙 支付宝收款</div>
+              <img id="qr-alipay" src="/assets/qrcodes/alipay.png" alt="支付宝收款码"
+                   onerror="qrOnError(this,'/assets/qrcodes/alipay')" />
+              <div class="donate-qr-missing hidden" id="qr-alipay-missing">管理员尚未上传收款码</div>
+            </div>
+          </div>
+          <button id="btn-self-upgrade" class="btn btn-primary btn-block">✅ 我已支付 ¥<span id="self-upgrade-amount">6.5</span>，立即开通 VIP</button>
+          <p class="donate-tip">扫码支付后点击上方按钮，系统自动开通永久 VIP 并充值对应次数（1 元=10 次），无需等待。</p>
+        </div>
+      </div>
+    </section>
   </main>
 
   <!-- 表单弹窗（替代原生 alert/confirm/prompt） -->

@@ -158,6 +158,28 @@ async def vip_order_status(order_no: str, user: dict = Depends(get_current_user)
     return st
 
 
+class VipSelfUpgradeRequest(BaseModel):
+    amount: float = 1.0
+
+
+@app.post("/api/vip/self-upgrade")
+async def vip_self_upgrade(req: VipSelfUpgradeRequest, user: dict = Depends(get_current_user)) -> dict:
+    """自助升级 VIP：扫码捐赠后点击确认自动开通（诚信制，无需管理员）。
+
+    开通永久 VIP 并按捐赠金额充值次数（1 元 = 10 次，最低 1 元）。
+    """
+    try:
+        amount = max(1.0, float(req.amount))
+    except (TypeError, ValueError):
+        amount = 1.0
+    query(
+        "UPDATE users SET vip = TRUE, vip_expires_at = NULL, credits = credits + %s WHERE id = %s",
+        (round(amount * 10), user["id"]),
+    )
+    row = auth.get_user_row(user["id"])
+    return {"ok": True, "amount": amount, "credits_added": round(amount * 10), "user": auth._user_public(row)}
+
+
 class VipGrantRequest(BaseModel):
     email: str
     mode: str = "vip"      # vip=开通永久VIP, credits=充值次数
