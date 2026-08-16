@@ -775,6 +775,8 @@ html { overflow-y: scroll; }
 .tpl-header { margin-bottom: 12px; }
 .tpl-header h3 { color: var(--text); }
 .tpl-header h3 { font-size: 17px; margin-bottom: 6px; }
+/* 模板页 → 算法模板库 跳转按钮 */
+.tpl-header-actions { margin-top: 10px; }
 
 /* ---------- 历史题目搜索 ---------- */
 .search-box { margin-bottom: 10px; }

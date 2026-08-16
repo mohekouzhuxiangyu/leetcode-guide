@@ -32,6 +32,7 @@ const state = {
   templates: null,
   hot100: null,
   batchTimer: null,
+  libraryReturn: "input", // 模板库返回去向：input=回到输入区 | result=回到题目
 };
 
 /* ---------- 工具函数 ---------- */
@@ -1230,13 +1231,21 @@ async function renderTemplateTab(category) {
   const templates = await loadTemplates();
   const tpl = templateForCategory(templates, category);
   if (!tpl) {
-    el.innerHTML = `<p class="problem-empty">「${escapeHtml(category)}」暂无固定模板，可查看「算法模板库」。</p>`;
+    el.innerHTML = `
+      <p class="problem-empty">「${escapeHtml(category)}」暂无固定模板，可在算法模板库中新建。</p>
+      <div class="tpl-header-actions">
+        <button class="btn btn-small" id="tpl-open-lib">📚 打开算法模板库</button>
+      </div>`;
+    el.querySelector("#tpl-open-lib").addEventListener("click", () => openLibraryForCategory(category));
     return;
   }
   el.innerHTML = `
     <div class="tpl-header">
       <h3>${escapeHtml(tpl.name)}${tpl.builtin ? "" : ' <span class="tpl-badge">自定义</span>'}</h3>
       <span class="tpl-when">🎯 适用场景：${escapeHtml(tpl.when)}</span>
+      <div class="tpl-header-actions">
+        <button class="btn btn-small" id="tpl-open-lib">📚 在算法模板库中查看 / 编辑</button>
+      </div>
     </div>
     <div class="code-block">
       <button class="code-copy" data-copy>📋 复制模板</button>
@@ -1249,6 +1258,17 @@ async function renderTemplateTab(category) {
     e.target.textContent = ok ? "✅ 已复制" : "❌ 复制失败";
     setTimeout(() => { e.target.textContent = "📋 复制模板"; }, 1500);
   });
+  el.querySelector("#tpl-open-lib").addEventListener("click", () => openLibraryForCategory(category));
+}
+
+/* 打开算法模板库并定位到指定分类（题目模板页进入，返回时回到题目） */
+async function openLibraryForCategory(category) {
+  state.tplFilter = category;
+  state.tplQuery = "";
+  const search = $("tpl-search");
+  if (search) search.value = "";
+  state.libraryReturn = "result";
+  await openTemplatesLibrary();
 }
 
 async function openTemplatesLibrary() {
@@ -2072,8 +2092,14 @@ function init() {
     $("problem-sticky").classList.toggle("collapsed");
   });
 
-  $("btn-templates").addEventListener("click", openTemplatesLibrary);
-  $("btn-templates-back").addEventListener("click", showInputOnly);
+  $("btn-templates").addEventListener("click", () => {
+    state.libraryReturn = "input"; // 从侧栏进入，返回时回到输入区
+    openTemplatesLibrary();
+  });
+  $("btn-templates-back").addEventListener("click", () => {
+    if (state.libraryReturn === "result") showResult();
+    else showInputOnly();
+  });
   $("btn-vip-back").addEventListener("click", showInputOnly);
   $("btn-tpl-new").addEventListener("click", () => showTemplateEditor(null));
   bindVipPanel();
