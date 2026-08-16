@@ -45,9 +45,18 @@
 
 ## 快速开始
 
+前置依赖：**PostgreSQL**（数据存储）。新环境部署步骤：
+
 ```bash
-# 1. 配置 API Key（已包含 .env，如更换密钥请编辑）
-cp .env.example .env   # 然后填入 DEEPSEEK_API_KEY
+# 0. 初始化数据库（新环境只需一次）
+createdb leetcode_guide
+psql -U <你的用户> -d leetcode_guide -f db/init.sql   # 创建表结构
+
+# 1. 配置 API Key 与数据库连接（已包含 .env，按需修改）
+cp .env.example .env
+#    .env 需包含：
+#      DEEPSEEK_API_KEY=sk-xxx
+#      DATABASE_URL=postgresql://localhost:5432/leetcode_guide
 
 # 2. 创建虚拟环境并安装依赖
 python3 -m venv .venv
@@ -60,6 +69,9 @@ python3 -m venv .venv
 ```
 
 打开浏览器访问 **http://127.0.0.1:8001**
+
+> 从旧 JSON 存储迁移：`data/history.json` 是旧版存储（现仅作备份），
+> 迁移命令：`.venv/bin/python -m backend.migrate_json_to_pg`
 
 ## 使用说明
 

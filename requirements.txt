@@ -8,3 +8,4 @@ requests>=2.31
 python-dotenv>=1.0
 pydantic>=2.6
 curl_cffi>=0.7
+psycopg2-binary>=2.9

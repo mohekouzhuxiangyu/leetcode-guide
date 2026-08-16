@@ -168,6 +168,17 @@
     </section>
   </main>
 
+  <!-- 表单弹窗（替代原生 alert/confirm/prompt） -->
+  <div id="modal-overlay" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-title" id="modal-title"></div>
+      <div class="modal-body" id="modal-body"></div>
+      <div class="modal-error hidden" id="modal-error"></div>
+      <div class="modal-actions" id="modal-actions"></div>
+    </div>
+  </div>
+  <div id="toast" class="toast hidden"></div>
+
   <!-- 本地托管的第三方库（避免 CDN 不可达导致页面报错） -->
   <script src="/assets/vendor/mermaid.min.js"></script>
   <script src="/assets/vendor/marked.min.js"></script>

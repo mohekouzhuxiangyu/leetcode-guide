@@ -63,6 +63,70 @@ async function copyText(text) {
 function show(el) { el.classList.remove("hidden"); }
 function hide(el) { el.classList.add("hidden"); }
 
+/* ---------- 表单弹窗（替代原生 alert/confirm/prompt） ---------- */
+
+function openModal(title, bodyHtml, actionsHtml) {
+  $("modal-title").textContent = title;
+  $("modal-body").innerHTML = bodyHtml;
+  const err = $("modal-error");
+  err.textContent = "";
+  err.classList.add("hidden");
+  $("modal-actions").innerHTML = actionsHtml;
+  show($("modal-overlay"));
+}
+
+function closeModal() {
+  hide($("modal-overlay"));
+}
+
+function confirmAction(title, message, onConfirm) {
+  openModal(
+    title,
+    `<div class="modal-msg">${escapeHtml(message)}</div>`,
+    `<button class="btn btn-small" id="modal-cancel">取消</button>
+     <button class="btn btn-primary btn-small" id="modal-ok">确认</button>`
+  );
+  $("modal-cancel").addEventListener("click", closeModal);
+  $("modal-ok").addEventListener("click", () => { closeModal(); onConfirm(); });
+}
+
+function promptText(title, placeholder, value, onOk) {
+  openModal(
+    title,
+    `<input id="modal-input" class="modal-input" type="text" spellcheck="false"
+            value="${escapeHtml(value || "")}" placeholder="${escapeHtml(placeholder || "")}" />`,
+    `<button class="btn btn-small" id="modal-cancel">取消</button>
+     <button class="btn btn-primary btn-small" id="modal-ok">确定</button>`
+  );
+  const input = $("modal-input");
+  input.focus();
+  input.select();
+  $("modal-cancel").addEventListener("click", closeModal);
+  $("modal-ok").addEventListener("click", () => {
+    const v = input.value.trim();
+    if (!v) {
+      const err = $("modal-error");
+      err.textContent = "内容不能为空";
+      err.classList.remove("hidden");
+      return;
+    }
+    closeModal();
+    onOk(v);
+  });
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") $("modal-ok").click();
+  });
+}
+
+function toast(message, isError) {
+  const t = $("toast");
+  t.textContent = message;
+  t.classList.remove("hidden", "toast-error");
+  if (isError) t.classList.add("toast-error");
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.add("hidden"), 3200);
+}
+
 function highlightAll(container) {
   if (typeof hljs === "undefined") return;
   container.querySelectorAll("pre code").forEach((c) => {
@@ -920,12 +984,24 @@ function makeHistoryItem(item) {
   li.querySelector(".h-title").addEventListener("click", () => loadRecord(item.slug));
   // 点原题链接只跳转，不触发加载记录
   li.querySelector(".h-link").addEventListener("click", (e) => e.stopPropagation());
-  li.querySelector(".h-del").addEventListener("click", async (e) => {
+  li.querySelector(".h-del").addEventListener("click", (e) => {
     e.stopPropagation();
-    if (!confirm(`删除「${item.title}」的记录？`)) return;
-    await fetch("/api/history/" + encodeURIComponent(item.slug), { method: "DELETE" });
-    delete state.cache[item.slug];
-    loadHistory();
+    confirmAction("删除记录", `确定删除「${item.title}」？删除后不可恢复。`, async () => {
+      try {
+        const resp = await fetch("/api/history/" + encodeURIComponent(item.slug), { method: "DELETE" });
+        if (!resp.ok) {
+          const data = await resp.json().catch(() => ({}));
+          toast(data.detail || "删除失败", true);
+          return;
+        }
+        delete state.cache[item.slug];
+        loadHistory();
+        loadGroups(); // 删除后刷新分组数量
+        toast("已删除「" + item.title + "」");
+      } catch (err) {
+        toast("删除失败：" + err.message, true);
+      }
+    });
   });
   return li;
 }
@@ -1060,30 +1136,29 @@ function populateGroupSelect() {
 }
 
 async function createGroup() {
-  const name = prompt("输入新分组名称：", "");
-  if (name === null) return;
-  const n = name.trim();
-  if (!n) return;
-  try {
-    const resp = await fetch("/api/groups", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: n }),
-    });
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data.detail || "创建失败");
-    if (data.ok === false) alert(`分组「${n}」已存在`);
-    await loadGroups();
-    // 默认选中新分组
-    state.groupFilter = n;
-    renderGroupFilter();
-    renderHistoryList(state.historyItems);
-    // 同步到批量分组下拉
-    const sel = $("batch-group-select");
-    if (sel) sel.value = n;
-  } catch (err) {
-    alert("创建分组失败：" + err.message);
-  }
+  promptText("新建分组", "输入分组名称", "", async (name) => {
+    try {
+      const resp = await fetch("/api/groups", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) { toast(data.detail || "创建分组失败", true); return; }
+      if (data.ok === false) { toast(`分组「${name}」已存在`, true); return; }
+      await loadGroups();
+      // 默认选中新分组
+      state.groupFilter = name;
+      renderGroupFilter();
+      renderHistoryList(state.historyItems);
+      // 同步到批量分组下拉
+      const sel = $("batch-group-select");
+      if (sel) sel.value = name;
+      toast(`已创建分组「${name}」`);
+    } catch (err) {
+      toast("创建分组失败：" + err.message, true);
+    }
+  });
 }
 
 /* ---------- 批量生成（链接列表 + 分组） ---------- */
@@ -1094,24 +1169,29 @@ async function startBatch() {
     .map((u) => u.trim())
     .filter(Boolean);
   if (!urls.length) {
-    alert("请先粘贴题目链接（每行一个）");
+    toast("请先粘贴题目链接（每行一个）", true);
     return;
   }
   const group = $("batch-group-select").value || "";
-  if (!confirm(`将批量生成 ${urls.length} 道题（每题约 30~60 秒，可随时停止），归入分组「${group || "未分组"}」。确定开始？`)) return;
-  try {
-    const resp = await fetch("/api/batch/start", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ urls, group }),
-    });
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data.detail || "启动失败");
-    if (data.invalid_count) alert(`有 ${data.invalid_count} 个链接无法解析（需包含 /problems/ 路径），已跳过`);
-    startBatchPolling();
-  } catch (err) {
-    alert("启动批量生成失败：" + err.message);
-  }
+  confirmAction(
+    "批量生成",
+    `将批量生成 ${urls.length} 道题（每题约 30~60 秒，可随时停止），归入分组「${group || "未分组"}」。确定开始？`,
+    async () => {
+      try {
+        const resp = await fetch("/api/batch/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ urls, group }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) { toast(data.detail || "启动失败", true); return; }
+        if (data.invalid_count) toast(`有 ${data.invalid_count} 个链接无法解析（需包含 /problems/ 路径），已跳过`, true);
+        startBatchPolling();
+      } catch (err) {
+        toast("启动批量生成失败：" + err.message, true);
+      }
+    }
+  );
 }
 
 async function stopBatch() {

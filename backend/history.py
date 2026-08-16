@@ -1,156 +1,159 @@
-"""历史记录存储：JSON 文件持久化，按 slug 去重（同一题重复生成会更新记录）。
+"""历史记录存储：PostgreSQL 持久化。
 
-支持分组：记录可归属某个分组（如 hot100），分组清单单独存 groups.json。
+表结构见 db/init.sql；连接串通过环境变量 DATABASE_URL 配置（backend/db.py）。
+按 slug 去重（同一题重复生成会更新记录），记录可归属分组。
 """
-import json
-import os
-import threading
 import time
-from pathlib import Path
 from typing import Optional
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BASE_DIR / "data"
-HISTORY_FILE = DATA_DIR / "history.json"
-GROUPS_FILE = DATA_DIR / "groups.json"
+import psycopg2.extras
 
-_lock = threading.Lock()
+from .db import get_conn, query
 
 
-def _load() -> dict:
-    if not HISTORY_FILE.exists():
-        return {}
-    try:
-        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return data if isinstance(data, dict) else {}
-    except (json.JSONDecodeError, OSError):
-        return {}
+def _fmt_ts(ts) -> str:
+    if not ts:
+        return ""
+    if hasattr(ts, "strftime"):
+        return ts.strftime("%Y-%m-%d %H:%M:%S")
+    return str(ts)
 
 
-def _save(records: dict) -> None:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = HISTORY_FILE.with_suffix(".tmp")
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(records, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, HISTORY_FILE)
+def _summary_from_row(r) -> dict:
+    return {
+        "slug": r["slug"],
+        "title": r["title"],
+        "difficulty": r["difficulty"],
+        "tags": r["tags"] or [],
+        "category": r["category"],
+        "group": r["group_name"] or "",
+        "url": r["url"] or f"https://leetcode.com/problems/{r['slug']}/",
+        "created_at": _fmt_ts(r["created_at"]),
+        "updated_at": _fmt_ts(r["updated_at"]),
+    }
 
 
 def list_records() -> list[dict]:
     """按更新时间倒序返回摘要列表。"""
-    with _lock:
-        records = _load()
-    items = []
-    for slug, rec in records.items():
-        items.append(
-            {
-                "slug": slug,
-                "title": rec.get("title", slug),
-                "difficulty": rec.get("difficulty", "Unknown"),
-                "tags": rec.get("tags", []),
-                "category": rec.get("category", "其他"),
-                "group": rec.get("group", ""),
-                "url": rec.get("url") or f"https://leetcode.com/problems/{slug}/",
-                "created_at": rec.get("created_at"),
-                "updated_at": rec.get("updated_at"),
-            }
-        )
-    items.sort(key=lambda r: r.get("updated_at") or "", reverse=True)
-    return items
-
-
-def upsert_record(slug: str, record: dict) -> None:
-    now = time.strftime("%Y-%m-%d %H:%M:%S")
-    with _lock:
-        records = _load()
-        existing = records.get(slug, {})
-        record.setdefault("created_at", existing.get("created_at") or now)
-        # 新记录未指定分组时，保留原有分组（避免重新生成时丢失 hot100 等分组）
-        if not record.get("group"):
-            record["group"] = existing.get("group", "")
-        record["updated_at"] = now
-        records[slug] = record
-        _save(records)
+    rows = query(
+        """SELECT slug, title, difficulty, tags, category, group_name, url, created_at, updated_at
+           FROM records ORDER BY updated_at DESC""",
+        fetch="all",
+    )
+    return [_summary_from_row(r) for r in rows]
 
 
 def get_record(slug: str) -> Optional[dict]:
-    with _lock:
-        records = _load()
-    return records.get(slug)
+    row = query("SELECT * FROM records WHERE slug = %s", (slug,), fetch="one")
+    if row is None:
+        return None
+    return {
+        "slug": row["slug"],
+        "url": row["url"] or f"https://leetcode.com/problems/{row['slug']}/",
+        "title": row["title"],
+        "difficulty": row["difficulty"],
+        "tags": row["tags"] or [],
+        "category": row["category"],
+        "group": row["group_name"] or "",
+        "problem": row["problem"] or {},
+        "problem_zh": row["problem_zh"] or "",
+        "analysis": row["analysis"] or "",
+        "walkthrough": row["walkthrough"] or "",
+        "flowchart": row["flowchart"] or "",
+        "code": row["code"] or {},
+        "errors": row["errors"] or {},
+        "created_at": _fmt_ts(row["created_at"]),
+        "updated_at": _fmt_ts(row["updated_at"]),
+    }
+
+
+def upsert_record(slug: str, record: dict) -> None:
+    """插入或更新记录；未指定分组时保留原有分组，created_at 首次写入后不变。"""
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO records
+                  (slug, title, difficulty, tags, category, group_name, url,
+                   problem, problem_zh, analysis, walkthrough, flowchart, code, errors,
+                   created_at, updated_at)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, now(), now())
+                ON CONFLICT (slug) DO UPDATE SET
+                  title = EXCLUDED.title,
+                  difficulty = EXCLUDED.difficulty,
+                  tags = EXCLUDED.tags,
+                  category = EXCLUDED.category,
+                  group_name = CASE WHEN COALESCE(EXCLUDED.group_name, '') = ''
+                                    THEN records.group_name ELSE EXCLUDED.group_name END,
+                  url = EXCLUDED.url,
+                  problem = EXCLUDED.problem,
+                  problem_zh = EXCLUDED.problem_zh,
+                  analysis = EXCLUDED.analysis,
+                  walkthrough = EXCLUDED.walkthrough,
+                  flowchart = EXCLUDED.flowchart,
+                  code = EXCLUDED.code,
+                  errors = EXCLUDED.errors,
+                  updated_at = now()
+                """,
+                (
+                    slug,
+                    record.get("title", slug),
+                    record.get("difficulty", "Unknown"),
+                    psycopg2.extras.Json(record.get("tags") or []),
+                    record.get("category", "其他"),
+                    record.get("group") or "",
+                    record.get("url", ""),
+                    psycopg2.extras.Json(record.get("problem") or {}),
+                    record.get("problem_zh", ""),
+                    record.get("analysis", ""),
+                    record.get("walkthrough", ""),
+                    record.get("flowchart", ""),
+                    psycopg2.extras.Json(record.get("code") or {}),
+                    psycopg2.extras.Json(record.get("errors") or {}),
+                ),
+            )
+    finally:
+        conn.close()
 
 
 def delete_record(slug: str) -> bool:
-    with _lock:
-        records = _load()
-        if slug in records:
-            del records[slug]
-            _save(records)
-            return True
-        return False
+    n = query("DELETE FROM records WHERE slug = %s", (slug,))
+    return bool(n)
 
 
 # ---------------- 分组 ----------------
 
-def _load_groups() -> list:
-    if not GROUPS_FILE.exists():
-        return []
-    try:
-        with open(GROUPS_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return data if isinstance(data, list) else []
-    except (json.JSONDecodeError, OSError):
-        return []
-
-
-def _save_groups(groups: list) -> None:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    with open(GROUPS_FILE, "w", encoding="utf-8") as f:
-        json.dump(groups, f, ensure_ascii=False, indent=2)
-
-
 def list_groups() -> list[dict]:
     """返回分组列表（显式创建 + 记录中出现的分组），带题目数。"""
-    with _lock:
-        records = _load()
-        explicit = _load_groups()
-    counts: dict = {}
-    for rec in records.values():
-        g = rec.get("group") or ""
-        counts[g] = counts.get(g, 0) + 1
-    names = list(dict.fromkeys([g for g in explicit] + [g for g in counts if g]))
-    result = [{"name": g, "count": counts.get(g, 0), "explicit": g in explicit} for g in names]
-    if counts.get("", 0) > 0:
-        result.insert(0, {"name": "", "count": counts[""], "explicit": False})
+    explicit = [r["name"] for r in query("SELECT name FROM groups ORDER BY name", fetch="all")]
+    count_rows = query(
+        "SELECT group_name, COUNT(*) AS c FROM records WHERE group_name <> '' GROUP BY group_name",
+        fetch="all",
+    )
+    counts = {r["group_name"]: r["c"] for r in count_rows}
+    ungrouped_row = query(
+        "SELECT COUNT(*) AS c FROM records WHERE group_name = '' OR group_name IS NULL", fetch="one"
+    )
+    ungrouped = ungrouped_row["c"] if ungrouped_row else 0
+    names = list(dict.fromkeys(explicit + list(counts.keys())))
+    result = [{"name": n, "count": counts.get(n, 0), "explicit": n in explicit} for n in names]
+    if ungrouped > 0:
+        result.insert(0, {"name": "", "count": ungrouped, "explicit": False})
     return result
 
 
 def create_group(name: str) -> bool:
-    with _lock:
-        groups = _load_groups()
-        if name in groups:
-            return False
-        groups.append(name)
-        _save_groups(groups)
-        return True
+    n = query("INSERT INTO groups (name) VALUES (%s) ON CONFLICT (name) DO NOTHING", (name,))
+    return bool(n)
 
 
 def delete_group(name: str) -> None:
-    with _lock:
-        groups = _load_groups()
-        if name in groups:
-            groups.remove(name)
-            _save_groups(groups)
+    query("DELETE FROM groups WHERE name = %s", (name,))
 
 
 def move_records(slugs: list, group: str) -> int:
-    """把若干记录移动到指定分组，返回移动数量。"""
-    with _lock:
-        records = _load()
-        n = 0
-        for s in slugs:
-            if s in records:
-                records[s]["group"] = group
-                n += 1
-        if n:
-            _save(records)
-        return n
+    if not slugs:
+        return 0
+    n = query("UPDATE records SET group_name = %s WHERE slug = ANY(%s)", [group, list(slugs)])
+    return n or 0
