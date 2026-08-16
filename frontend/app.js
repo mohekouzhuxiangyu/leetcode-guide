@@ -14,6 +14,7 @@ let currentJobId = null;
 let currentSlug = null;
 let pollTimer = null;
 let mermaidSeq = 0;
+let vipQrTimer = null;
 
 /* 会话状态：记录缓存 + 标签页懒渲染 + 分类筛选 + 批量生成 */
 const state = {
@@ -202,7 +203,7 @@ function renderUserArea() {
   document.querySelectorAll(".ua-vip").forEach((b) => b.addEventListener("click", showVipModal));
 }
 
-/* 开通 VIP（支付宝支付） */
+/* 开通 VIP（支付宝：电脑支付 / 扫码支付） */
 async function showVipModal() {
   let plans = {};
   try {
@@ -219,12 +220,14 @@ async function showVipModal() {
     </div>`;
   }
   body += `</div>
-    <div class="modal-msg" style="color:var(--text-dim);font-size:12px;">💳 使用支付宝支付，支付完成后自动开通。开发模式下点击支付将直接模拟成功。</div>`;
+    <div class="vip-pay-ways">
+      <button class="btn btn-small" id="vip-pay-page">💻 电脑支付</button>
+      <button class="btn btn-small btn-start" id="vip-pay-qr">📱 扫码支付</button>
+    </div>`;
   openModal(
     "开通 VIP",
     body,
-    `<button class="btn btn-small" id="modal-cancel">取消</button>
-     <button class="btn btn-primary btn-small" id="modal-ok">💰 支付宝支付</button>`
+    `<button class="btn btn-small" id="modal-cancel">取消</button>`
   );
   let selected = Object.keys(plans)[0];
   const cards = document.querySelectorAll(".vip-plan");
@@ -236,20 +239,67 @@ async function showVipModal() {
     })
   );
   $("modal-cancel").addEventListener("click", closeModal);
-  $("modal-ok").addEventListener("click", async () => {
-    try {
-      const resp = await apiFetch("/api/vip/order", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan: selected }),
-      });
-      const data = await resp.json();
-      if (!resp.ok) { modalError(data.detail || "下单失败"); return; }
+  $("vip-pay-page").addEventListener("click", () => doVipPay(selected, "page"));
+  $("vip-pay-qr").addEventListener("click", () => doVipPay(selected, "qr"));
+}
+
+async function doVipPay(plan, method) {
+  try {
+    const resp = await apiFetch("/api/vip/order", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ plan, method }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) { modalError(data.detail || "下单失败"); return; }
+    if (method === "qr") {
+      closeModal();
+      showQrPayModal(data);
+    } else {
       window.location.href = data.pay_url;
-    } catch (err) {
-      modalError("下单失败：" + err.message);
     }
+  } catch (err) {
+    modalError("下单失败：" + err.message);
+  }
+}
+
+/* 扫码支付：渲染二维码 + 轮询订单状态 */
+function showQrPayModal(order) {
+  const qrId = "vip-qr-canvas";
+  const body = order.dev
+    ? `<div class="modal-msg">开发模式（未配置支付宝）：点击下方按钮模拟支付成功。</div>
+       <a class="modal-link" href="${escapeHtml(order.pay_url)}" target="_blank" rel="noopener">模拟支付 → ${escapeHtml(order.order_no)}</a>`
+    : `<div class="modal-msg">请使用<b>支付宝 App</b> 扫码支付：<b>¥${escapeHtml(order.amount)}</b>（${escapeHtml(order.name)}）</div>
+       <div class="vip-qr"><div id="${qrId}"></div></div>
+       <div class="modal-msg" id="vip-qr-status" style="color:var(--text-dim);font-size:12px;">等待扫码支付…</div>`;
+  openModal(
+    "扫码支付",
+    body,
+    `<button class="btn btn-small" id="modal-cancel">取消</button>`
+  );
+  $("modal-cancel").addEventListener("click", () => {
+    clearInterval(vipQrTimer);
+    closeModal();
   });
+  if (!order.dev) {
+    new QRCode(document.getElementById(qrId), { text: order.qr_code, width: 220, height: 220 });
+    vipQrTimer = setInterval(async () => {
+      try {
+        const resp = await apiFetch("/api/vip/order/" + encodeURIComponent(order.order_no));
+        const st = await resp.json();
+        if (resp.ok && st.status === "paid") {
+          clearInterval(vipQrTimer);
+          $("vip-qr-status").textContent = "✅ 支付成功";
+          setTimeout(async () => {
+            closeModal();
+            const me = await apiFetch("/api/auth/me");
+            if (me.ok) { auth.user = (await me.json()).user; renderUserArea(); }
+            toast("🎉 VIP 开通成功");
+          }, 800);
+        }
+      } catch { /* 忽略 */ }
+    }, 2000);
+  }
 }
 
 function showLoginModal() {

@@ -1124,3 +1124,9 @@ mark {
   right: 16px;
   z-index: 70;
 }
+
+/* ---------- VIP 支付方式与扫码 ---------- */
+.vip-pay-ways { display: flex; gap: 10px; margin: 4px 0 6px; }
+.vip-pay-ways .btn { flex: 1; }
+.vip-qr { display: flex; justify-content: center; margin: 10px 0; }
+.vip-qr #vip-qr-canvas, .vip-qr canvas { border: 1px solid var(--border); border-radius: 8px; padding: 8px; background: #fff; }

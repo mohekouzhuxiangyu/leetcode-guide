@@ -138,14 +138,24 @@ async def vip_plans() -> dict:
 
 class VipOrderRequest(BaseModel):
     plan: str
+    method: str = "page"  # page=电脑跳转, qr=扫码支付
 
 
 @app.post("/api/vip/order")
 async def vip_order(req: VipOrderRequest, user: dict = Depends(get_current_user)) -> dict:
-    order, err = vip.create_order(user["id"], req.plan)
+    order, err = vip.create_order(user["id"], req.plan, req.method)
     if order is None:
         raise HTTPException(status_code=400, detail=err)
     return order
+
+
+@app.get("/api/vip/order/{order_no}")
+async def vip_order_status(order_no: str, user: dict = Depends(get_current_user)) -> dict:
+    """扫码支付后轮询订单状态。"""
+    st = vip.get_order_status(user["id"], order_no)
+    if st is None:
+        raise HTTPException(status_code=404, detail="订单不存在")
+    return st
 
 
 @app.get("/api/vip/mock-pay")

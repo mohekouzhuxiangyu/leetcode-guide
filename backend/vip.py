@@ -34,8 +34,12 @@ def is_alipay_configured() -> bool:
     return bool(ALIPAY_APP_ID and ALIPAY_PRIVATE_KEY)
 
 
-def create_order(user_id: int, plan: str):
-    """创建订单，返回 (order_dict|None, 错误信息)。"""
+def create_order(user_id: int, plan: str, method: str = "page"):
+    """创建订单，返回 (order_dict|None, 错误信息)。
+
+    method: "page" 电脑网站支付跳转 / "qr" 扫码支付（alipay.trade.precreate）
+    未配置支付宝时为开发模式：返回模拟支付地址/标记。
+    """
     plan_info = PLANS.get(plan)
     if not plan_info:
         return None, "不支持的套餐"
@@ -44,11 +48,66 @@ def create_order(user_id: int, plan: str):
         "INSERT INTO vip_orders (user_id, order_no, plan, amount, status) VALUES (%s,%s,%s,%s,'pending')",
         (user_id, order_no, plan, plan_info["amount"]),
     )
-    if is_alipay_configured():
-        pay_url = _build_alipay_url(order_no, plan_info["amount"])
-    else:
+    if not is_alipay_configured():
+        # 开发模式：模拟支付
         pay_url = f"{APP_BASE_URL}/api/vip/mock-pay?order_no={order_no}"
-    return {"order_no": order_no, "pay_url": pay_url, "amount": plan_info["amount"], "name": plan_info["name"], "desc": plan_info["desc"]}, None
+        return {
+            "order_no": order_no,
+            "pay_url": pay_url,
+            "qr_code": None,
+            "dev": True,
+            "amount": plan_info["amount"],
+            "name": plan_info["name"],
+            "desc": plan_info["desc"],
+        }, None
+    if method == "qr":
+        qr_code = _precreate(order_no, plan_info["amount"])
+        return {
+            "order_no": order_no,
+            "pay_url": "",
+            "qr_code": qr_code,
+            "dev": False,
+            "amount": plan_info["amount"],
+            "name": plan_info["name"],
+            "desc": plan_info["desc"],
+        }, None
+    pay_url = _build_alipay_url(order_no, plan_info["amount"])
+    return {"order_no": order_no, "pay_url": pay_url, "qr_code": None, "dev": False, "amount": plan_info["amount"], "name": plan_info["name"], "desc": plan_info["desc"]}, None
+
+
+def _precreate(order_no: str, amount: str) -> str:
+    """调用 alipay.trade.precreate 生成当面付二维码串（qr_code）。"""
+    from alipay import AliPay
+
+    alipay = AliPay(
+        appid=ALIPAY_APP_ID,
+        app_notify_url=ALIPAY_NOTIFY_URL,
+        app_private_key_string=ALIPAY_PRIVATE_KEY,
+        alipay_public_key_string=ALIPAY_PUBLIC_KEY,
+        sign_type="RSA2",
+        debug=False,
+    )
+    result = alipay.api_alipay_trade_precreate(
+        out_trade_no=order_no,
+        total_amount=amount,
+        subject="力扣算法学习助手 VIP 会员",
+        notify_url=ALIPAY_NOTIFY_URL,
+    )
+    if result.get("code") == "10000" and result.get("qr_code"):
+        return result["qr_code"]
+    raise RuntimeError(f"支付宝预下单失败: {result}")
+
+
+def get_order_status(user_id: int, order_no: str):
+    """查询订单状态（供前端扫码支付后轮询）。"""
+    row = query(
+        "SELECT order_no, status, plan, amount, created_at FROM vip_orders WHERE user_id = %s AND order_no = %s",
+        (user_id, order_no),
+        fetch="one",
+    )
+    if not row:
+        return None
+    return {"order_no": row["order_no"], "status": row["status"], "plan": row["plan"], "amount": row["amount"]}
 
 
 def _build_alipay_url(order_no: str, amount: str) -> str:
