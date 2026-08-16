@@ -1043,3 +1043,11 @@ mark {
 .input-tab-panel .input-row { margin-bottom: 4px; }
 .group-hint { margin-top: 10px; font-size: 12px; }
 .group-hint span { color: var(--accent-hover); font-weight: 600; }
+
+/* 模板库代码区：白天模式强制深底浅字（防止被主题/旧缓存覆盖） */
+[data-theme="light"] .tpl-card pre { background: #0d1117 !important; border-color: #30363d; }
+[data-theme="light"] .tpl-card pre code { color: #e6edf3 !important; }
+[data-theme="light"] .tpl-card pre code.hljs { background: transparent !important; color: inherit !important; }
+[data-theme="light"] #tab-template .code-block pre { background: #0d1117 !important; }
+[data-theme="light"] #tab-template .code-block pre code { color: #e6edf3 !important; }
+[data-theme="light"] #tab-template .code-block pre code.hljs { background: transparent !important; color: inherit !important; }
