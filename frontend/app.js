@@ -182,12 +182,12 @@ function renderUserArea() {
   areas.forEach((el) => {
     if (auth.user) {
       const vipBadge = isVip() ? `<span class="vip-badge">👑 VIP</span>` : "";
-      const creditsBadge = `<span class="credits-badge" title="${isVip() ? "VIP 每道题 0.1 元" : "普通用户每道题 1 元"}（1 次=0.1 元）">🎫 ${auth.user.credits || 0}次</span>`;
+      const usageBadge = `<span class="credits-badge" title="每日每账号最多生成 200 题（${isVip() ? "VIP 0.1 元/题" : "普通 1 元/题"}）">📊 今日 ${auth.user.today_usage || 0}/200</span>`;
       const upgradeBtn = isVip() ? "" : `<span class="ua-divider"></span><button class="ua-btn" data-act="vip">💖 升级VIP</button>`;
       const adminBtn = auth.user.is_admin ? `<span class="ua-divider"></span><button class="ua-btn" data-act="admin">👑 管理</button>` : "";
       el.innerHTML = `<div class="ua-inner">
         <span class="ua-user">👤 ${escapeHtml(auth.user.username)}</span>
-        <span class="ua-badges">${vipBadge}${creditsBadge}</span>
+        <span class="ua-badges">${vipBadge}${usageBadge}</span>
         ${upgradeBtn}
         ${adminBtn}
         <span class="ua-divider"></span>
@@ -250,53 +250,55 @@ function qrOnError(el, base) {
   }
 }
 
-/* 👑 VIP 管理（仅管理员）：开通永久 VIP / 充值解析次数 */
+/* 👑 VIP 管理（仅管理员）：开通永久 VIP / 查看今日用量 */
 function showGrantModal() {
   openModal(
-    "VIP 管理（为捐款用户开通）",
+    "VIP 管理",
     `<div class="modal-form">
-       <label class="modal-label">用户邮箱</label>
+       <label class="modal-label">为捐款用户开通永久 VIP</label>
        <input id="grant-email" class="modal-input" type="email" spellcheck="false" placeholder="donor@example.com" />
-       <label class="modal-label">操作</label>
-       <select id="grant-mode" class="modal-input">
-         <option value="vip">开通永久 VIP（生成仍按 0.1 元/题扣次）</option>
-         <option value="credits">充值次数（1 元 = 10 次）</option>
-       </select>
-       <label class="modal-label" id="grant-count-label">充值金额（元）</label>
-       <input id="grant-count" class="modal-input" type="number" value="10" min="1" step="1" />
-     </div>`,
-    `<button class="btn btn-small" id="modal-cancel">取消</button>
-     <button class="btn btn-primary btn-small" id="modal-ok">确认</button>`
+       <button class="btn btn-primary btn-small" id="grant-vip-btn" style="width:100%;">👑 开通永久 VIP</button>
+     </div>
+     <div class="modal-form">
+       <label class="modal-label">今日生成用量（计费流水）</label>
+       <button class="btn btn-small" id="grant-usage-btn" style="width:100%;">📊 查看今日用量</button>
+     </div>
+     <div id="grant-usage-list"></div>`,
+    `<button class="btn btn-small" id="modal-cancel">关闭</button>`
   );
-  const modeSel = $("grant-mode");
-  const countLabel = $("grant-count-label");
-  const countInput = $("grant-count");
-  const syncMode = () => {
-    const isCredits = modeSel.value === "credits";
-    countLabel.textContent = isCredits ? "充值金额（元，1 元 = 10 次）" : "（永久 VIP 无需次数）";
-    countInput.disabled = !isCredits;
-  };
-  syncMode();
-  modeSel.addEventListener("change", syncMode);
   $("modal-cancel").addEventListener("click", closeModal);
-  $("modal-ok").addEventListener("click", async () => {
+  $("grant-vip-btn").addEventListener("click", async () => {
     const email = $("grant-email").value.trim();
-    const mode = modeSel.value;
-    const yuan = parseFloat($("grant-count").value) || 10;
     if (!email) { modalError("请输入用户邮箱"); return; }
     try {
-      const count = mode === "credits" ? Math.round(yuan * 10) : 1; // 1元=10次
       const resp = await apiFetch("/api/vip/grant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, mode, count }),
+        body: JSON.stringify({ email, mode: "vip", count: 1 }),
       });
       const data = await resp.json();
       if (!resp.ok) { modalError(data.detail || "操作失败"); return; }
-      closeModal();
       toast(data.detail || "操作成功");
     } catch (err) {
       modalError("操作失败：" + err.message);
+    }
+  });
+  $("grant-usage-btn").addEventListener("click", async () => {
+    try {
+      const resp = await apiFetch("/api/vip/usage");
+      const data = await resp.json();
+      if (!resp.ok) { modalError(data.detail || "获取失败"); return; }
+      const list = $("grant-usage-list");
+      if (!data.items.length) {
+        list.innerHTML = `<div class="modal-msg" style="color:var(--text-dim);font-size:12px;">今日暂无生成记录</div>`;
+        return;
+      }
+      list.innerHTML = `<div class="modal-msg" style="font-size:12px;">今日共 <b>${data.count_today}</b> 题，应收 <b>¥${data.total_today}</b></div>
+        <table class="usage-table"><tr><th>用户</th><th>题目</th><th>单价</th><th>时间</th></tr>
+        ${data.items.map((i) => `<tr><td>${escapeHtml(i.email)}</td><td>${escapeHtml(i.slug)}</td><td>¥${i.price}</td><td>${escapeHtml(i.created_at)}</td></tr>`).join("")}
+        </table>`;
+    } catch (err) {
+      modalError("获取失败：" + err.message);
     }
   });
 }
@@ -1261,6 +1263,19 @@ function renderTemplatesList(templates) {
 /* ---------- 题目心得（Markdown） ---------- */
 
 async function renderNoteTab(record) {
+  const container = $("tab-note");
+  // 心得文档为 VIP 专属功能
+  if (!isVip()) {
+    container.innerHTML = `
+      <div class="note-vip-gate">
+        <div class="note-vip-icon">👑</div>
+        <h3>心得文档为 VIP 专属功能</h3>
+        <p>开通 VIP 后，可在每道题下撰写自己的 Markdown 解题心得（支持富文本预览）。</p>
+        <button class="btn btn-primary" id="note-vip-btn">💖 升级 VIP</button>
+      </div>`;
+    container.querySelector("#note-vip-btn").addEventListener("click", openVipPanel);
+    return;
+  }
   const slug = record.slug;
   const editor = $("note-editor");
   const preview = $("note-preview");
@@ -1272,6 +1287,7 @@ async function renderNoteTab(record) {
   $("note-status").textContent = "";
   try {
     const resp = await apiFetch("/api/notes/" + encodeURIComponent(slug));
+    if (resp.status === 403) { toast("心得文档为 VIP 专属功能", true); openVipPanel(); return; }
     if (resp.ok) {
       const data = await resp.json();
       editor.value = data.content || "";

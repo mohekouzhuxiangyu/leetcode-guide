@@ -166,18 +166,18 @@ class VipSelfUpgradeRequest(BaseModel):
 async def vip_self_upgrade(req: VipSelfUpgradeRequest, user: dict = Depends(get_current_user)) -> dict:
     """自助升级 VIP：扫码捐赠后点击确认自动开通（诚信制，无需管理员）。
 
-    开通永久 VIP 并按捐赠金额充值次数（1 元 = 10 次，最低 1 元）。
+    捐赠最低 1 元、最高不限（诚信制）。
     """
     try:
         amount = max(1.0, float(req.amount))
     except (TypeError, ValueError):
         amount = 1.0
     query(
-        "UPDATE users SET vip = TRUE, vip_expires_at = NULL, credits = credits + %s WHERE id = %s",
-        (round(amount * 10), user["id"]),
+        "UPDATE users SET vip = TRUE, vip_expires_at = NULL WHERE id = %s",
+        (user["id"],),
     )
     row = auth.get_user_row(user["id"])
-    return {"ok": True, "amount": amount, "credits_added": round(amount * 10), "user": auth._user_public(row)}
+    return {"ok": True, "amount": amount, "user": auth._user_public(row)}
 
 
 class VipGrantRequest(BaseModel):
@@ -200,6 +200,35 @@ async def vip_grant(req: VipGrantRequest, user: dict = Depends(get_current_user)
     if not ok:
         raise HTTPException(status_code=404, detail="用户不存在")
     return {"ok": True, "detail": detail}
+
+
+@app.get("/api/vip/usage")
+async def vip_usage(user: dict = Depends(get_current_user)) -> dict:
+    """管理员查看今日生成用量与计费流水（用于结算）。"""
+    if not user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="仅管理员可操作")
+    rows = query(
+        """SELECT u.email, u.username, l.slug, l.price, l.created_at
+           FROM usage_log l JOIN users u ON u.id = l.user_id
+           WHERE l.created_at >= CURRENT_DATE
+           ORDER BY l.created_at DESC LIMIT 500""",
+        fetch="all",
+    )
+    total = query(
+        "SELECT COALESCE(SUM(price), 0) AS s FROM usage_log WHERE created_at >= CURRENT_DATE",
+        fetch="one",
+    )
+    items = [
+        {
+            "email": r["email"],
+            "username": r["username"],
+            "slug": r["slug"],
+            "price": float(r["price"] or 0),
+            "created_at": r["created_at"].strftime("%H:%M:%S") if r["created_at"] else "",
+        }
+        for r in rows
+    ]
+    return {"items": items, "total_today": float(total["s"] or 0), "count_today": len(items)}
 
 
 @app.get("/api/vip/mock-pay")
@@ -233,37 +262,53 @@ async def vip_payjs_notify(request: Request) -> str:
     return "success"
 
 
-# ---------------- 计费（普通 1 元/题，VIP 0.1 元/题；1 次 = 0.1 元） ----------------
+# ---------------- 计费（普通 1 元/题，VIP 0.1 元/题；每日每账号 200 题上限） ----------------
 
-CREDIT_PER_REGULAR = 10  # 普通用户 1 元/题 = 10 次
-CREDIT_PER_VIP = 1       # VIP 0.1 元/题 = 1 次
-
-def _consume_credit(user_id: int) -> bool:
-    """扣除 1 次解析次数（原子操作，次数不足返回 False）。"""
-    n = query("UPDATE users SET credits = credits - 1 WHERE id = %s AND credits > 0", (user_id,))
-    return bool(n)
+DAILY_LIMIT = 200
+PRICE_REGULAR = 1.0
+PRICE_VIP = 0.1
 
 
-def _consume_credits(user_id: int, count: int) -> bool:
-    """扣除 count 次解析次数（原子操作，不足返回 False）。"""
-    n = query(
-        "UPDATE users SET credits = credits - %s WHERE id = %s AND credits >= %s",
-        (count, user_id, count),
+def _today_used(user_id: int) -> int:
+    row = query(
+        "SELECT count FROM daily_usage WHERE user_id = %s AND day = CURRENT_DATE",
+        (user_id,),
+        fetch="one",
     )
-    return bool(n)
+    return int(row["count"] or 0) if row else 0
 
 
-def check_generation_quota(user: dict, count: int = 1) -> None:
-    """生成前校验配额：普通 10 次/题（1 元），VIP 1 次/题（0.1 元）。不足抛 403。"""
+def record_generation(user: dict, slugs: list) -> None:
+    """生成前校验每日额度并记录计费流水（原子占用额度，超限抛 403）。"""
+    count = len(slugs)
+    if count <= 0:
+        return
     row = auth.get_user_row(user["id"])
-    is_vip = auth.is_vip(row)
-    cost_per = CREDIT_PER_VIP if is_vip else CREDIT_PER_REGULAR
-    total = cost_per * count
-    if not _consume_credits(user["id"], total):
-        price = "VIP 每道题 0.1 元" if is_vip else "普通用户每道题 1 元"
+    price = PRICE_VIP if auth.is_vip(row) else PRICE_REGULAR
+    used = _today_used(user["id"])
+    if used + count > DAILY_LIMIT:
         raise HTTPException(
             status_code=403,
-            detail=f"余额不足：{price}，本次共需 ¥{total / 10:.1f}，请充值次数或升级 VIP",
+            detail=f"已达每日生成上限（{DAILY_LIMIT} 题/账号/天）：今日已用 {used} 题，本次需要 {count} 题",
+        )
+    # 原子占用额度
+    n = query(
+        """INSERT INTO daily_usage (user_id, day, count) VALUES (%s, CURRENT_DATE, %s)
+           ON CONFLICT (user_id, day) DO UPDATE SET count = daily_usage.count + %s
+           WHERE daily_usage.count + %s <= %s RETURNING count""",
+        (user["id"], count, count, count, DAILY_LIMIT),
+        fetch="one",
+    )
+    if not n:
+        raise HTTPException(
+            status_code=403,
+            detail=f"已达每日生成上限（{DAILY_LIMIT} 题/账号/天）：今日已用 {used} 题",
+        )
+    # 记录计费流水（普通 1 元/题，VIP 0.1 元/题，用于结算）
+    for slug in slugs:
+        query(
+            "INSERT INTO usage_log (user_id, slug, price) VALUES (%s, %s, %s)",
+            (user["id"], slug, price),
         )
 
 
@@ -325,8 +370,8 @@ async def generate(req: GenerateRequest, user: dict = Depends(get_current_user))
     slug = extract_slug(url)
     if not slug:
         raise HTTPException(status_code=400, detail="无法解析题目链接，请检查格式（需包含 /problems/ 路径）")
-    # 计费：普通 1 元/题，VIP 0.1 元/题
-    check_generation_quota(user, 1)
+    # 计费：普通 1 元/题，VIP 0.1 元/题；每日 200 题上限
+    record_generation(user, [slug])
 
     job_id = uuid.uuid4().hex
     with _job_lock:
@@ -423,8 +468,8 @@ async def batch_start(req: BatchStartRequest, user: dict = Depends(get_current_u
             queue.append({"url": url, "slug": slug, "group": (req.group or "").strip(), "user_id": user["id"]})
         if not queue:
             raise HTTPException(status_code=400, detail="没有有效的题目链接（需包含 /problems/ 路径）")
-        # 计费：普通 1 元/题，VIP 0.1 元/题，按题数扣
-        check_generation_quota(user, len(queue))
+        # 计费：普通 1 元/题，VIP 0.1 元/题；每日 200 题上限（按题数占用）
+        record_generation(user, [item["slug"] for item in queue])
         _batch.update(
             status="running", queue=queue, total=len(queue), done=0, failed=0,
             current=None, message="批量生成进行中…",
@@ -508,10 +553,8 @@ class NoteRequest(BaseModel):
 
 
 @app.get("/api/notes/{slug}")
-async def get_note(slug: str, user: Optional[dict] = Depends(get_current_user_optional)) -> dict:
-    """读取自己的题目心得（免费）；游客返回空。"""
-    if user is None:
-        return {"slug": slug, "content": "", "updated_at": None}
+async def get_note(slug: str, user: dict = Depends(require_vip)) -> dict:
+    """读取自己的题目心得（VIP 功能）。"""
     row = query(
         "SELECT content, updated_at FROM user_notes WHERE user_id = %s AND slug = %s",
         (user["id"], slug),

@@ -52,6 +52,24 @@ CREATE TABLE IF NOT EXISTS user_notes (
     PRIMARY KEY (user_id, slug)
 );
 
+-- 每日生成额度（每账号每天 200 题上限）
+CREATE TABLE IF NOT EXISTS daily_usage (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    day     DATE NOT NULL DEFAULT CURRENT_DATE,
+    count   INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, day)
+);
+
+-- 计费流水（普通 1 元/题，VIP 0.1 元/题，按量记录用于结算）
+CREATE TABLE IF NOT EXISTS usage_log (
+    id         SERIAL PRIMARY KEY,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    slug       TEXT NOT NULL,
+    price      NUMERIC(6,2) NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_usage_log_user_day ON usage_log (user_id, created_at);
+
 -- 登录会话表
 CREATE TABLE IF NOT EXISTS sessions (
     token      TEXT PRIMARY KEY,

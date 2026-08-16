@@ -117,6 +117,14 @@ def login(email: str, password: str):
 
 
 def _user_public(row) -> dict:
+    today = 0
+    row2 = query(
+        "SELECT count FROM daily_usage WHERE user_id = %s AND day = CURRENT_DATE",
+        (row["id"],),
+        fetch="one",
+    )
+    if row2:
+        today = int(row2["count"] or 0)
     return {
         "id": row["id"],
         "username": row["username"],
@@ -124,7 +132,7 @@ def _user_public(row) -> dict:
         "email_verified": row["email_verified"],
         "vip": bool(row["vip"]),
         "vip_expires_at": None,  # VIP 为永久，无期限
-        "credits": int(row["credits"] or 0),
+        "today_usage": today,
         "is_admin": bool(ADMIN_EMAIL) and row["email"].strip().lower() == ADMIN_EMAIL.strip().lower(),
     }
 

@@ -1232,3 +1232,13 @@ mark {
 }
 #btn-self-upgrade { margin-top: 14px; }
 @media (max-width: 860px) { .vip-page { grid-template-columns: 1fr; } }
+
+/* ---------- 心得 VIP 门控 / 用量表 ---------- */
+.note-vip-gate { text-align: center; padding: 48px 20px; }
+.note-vip-icon { font-size: 42px; margin-bottom: 12px; }
+.note-vip-gate h3 { font-size: 17px; margin-bottom: 10px; }
+.note-vip-gate p { color: var(--text-dim); font-size: 13px; margin-bottom: 18px; line-height: 1.8; }
+.usage-table { border-collapse: collapse; width: 100%; font-size: 12px; margin-top: 8px; }
+.usage-table th, .usage-table td { border: 1px solid var(--border); padding: 4px 8px; text-align: left; }
+.usage-table th { background: var(--bg-input); }
+#grant-usage-list { max-height: 40vh; overflow-y: auto; margin-top: 8px; }
