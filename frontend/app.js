@@ -383,6 +383,18 @@ function renderResult(record) {
   const timeText = record.updated_at || record.created_at || new Date().toLocaleString();
   $("result-time").textContent = `生成于 ${timeText} ${note}`;
 
+  // 固定题目描述（置顶，便于与下方内容对比）
+  const ps = $("problem-sticky");
+  const descRaw = (record.problem_zh || problem.content_text || "").trim();
+  if (descRaw) {
+    const { description } = parseProblemSections(descRaw);
+    $("ps-body").textContent = description || descRaw;
+    ps.classList.remove("hidden");
+    ps.classList.add("open");
+  } else {
+    ps.classList.add("hidden");
+  }
+
   renderProblemTab(problem, record);
   state.renderedTabs.problem = true;
 
@@ -489,9 +501,9 @@ function showCodeLang(lang) {
   });
 }
 
-/* ---------- 动画演示（逐步播放） ---------- */
+/* ---------- 动画演示（逐步播放，带真实动画） ---------- */
 
-const wt = { steps: [], idx: 0, timer: null };
+const wt = { steps: [], idx: 0, timer: null, arrayLen: 0, prevData: null, extraKey: "" };
 
 function renderWalkthroughTab(raw) {
   const container = $("walkthrough-container");
@@ -504,9 +516,20 @@ function renderWalkthroughTab(raw) {
   wt.steps = steps;
   wt.idx = 0;
   wt.timer = null;
+  wt.arrayLen = 0;
+  wt.prevData = null;
+  wt.extraKey = "";
+  for (const s of steps) {
+    const arr = (s.data || {}).array;
+    if (Array.isArray(arr)) wt.arrayLen = Math.max(wt.arrayLen, arr.length);
+  }
   container.innerHTML = `
-    <div class="wt-tip">🎬 点击「下一步」逐步观察算法执行过程，也可自动播放</div>
-    <div class="wt-board" id="wt-board"></div>
+    <div class="wt-tip">🎬 逐步动画：点击「下一步」观察指针滑动与格子变化，或自动播放</div>
+    <div class="wt-board">
+      <div class="wt-title" id="wt-title"></div>
+      <div class="wt-visual" id="wt-visual"></div>
+      <div class="wt-note" id="wt-note"></div>
+    </div>
     <div class="wt-controls">
       <button class="btn btn-small" id="wt-prev">◀ 上一步</button>
       <span class="wt-counter" id="wt-counter"></span>
@@ -523,45 +546,21 @@ function renderWalkthroughTab(raw) {
 function renderWtStep() {
   const s = wt.steps[wt.idx] || {};
   const data = s.data || {};
-  const board = $("wt-board");
-  let html = `<div class="wt-title">第 ${wt.idx + 1} 步：${escapeHtml(s.title || "")}</div>`;
 
-  if (Array.isArray(data.array)) {
-    html += `<div class="wt-array">`;
-    data.array.forEach((v, k) => {
-      const hl = (data.highlight || []).includes(k) ? " hl" : "";
-      html += `<div class="wt-cell${hl}">${escapeHtml(String(v))}</div>`;
-    });
-    html += `</div>`;
-    if (data.pointers && Object.keys(data.pointers).length) {
-      html += `<div class="wt-pointers">`;
-      for (const [name, pos] of Object.entries(data.pointers)) {
-        html += `<div class="wt-ptr" style="margin-left:${Math.max(0, pos) * 68 + 6}px">▼ <b>${escapeHtml(name)}</b>=${escapeHtml(String(pos))}</div>`;
-      }
-      html += `</div>`;
-    }
-  }
+  const title = $("wt-title");
+  title.textContent = `第 ${wt.idx + 1} 步：${s.title || ""}`;
 
-  if (data.map && Object.keys(data.map).length) {
-    html += `<div class="wt-map"><div class="wt-map-title">🗺 哈希表</div><table><tr><th>键</th><th>值</th></tr>`;
-    for (const [k, v] of Object.entries(data.map)) {
-      html += `<tr><td>${escapeHtml(k)}</td><td>${escapeHtml(String(v))}</td></tr>`;
-    }
-    html += `</table></div>`;
-  }
+  renderWtVisual(data, wt.prevData);
+  wt.prevData = data;
 
-  for (const key of ["stack", "queue"]) {
-    if (Array.isArray(data[key]) && data[key].length) {
-      const label = key === "stack" ? "📚 栈" : "🎢 队列";
-      html += `<div class="wt-seq"><span class="wt-seq-label">${label}</span>`;
-      data[key].forEach((v) => { html += `<span class="wt-seq-item">${escapeHtml(String(v))}</span>`; });
-      html += `</div>`;
-    }
-  }
+  // 说明文字淡入
+  const note = $("wt-note");
+  note.textContent = s.note || "";
+  note.classList.remove("fade");
+  void note.offsetWidth;
+  note.classList.add("fade");
 
-  html += `<div class="wt-note">💡 ${escapeHtml(s.note || "")}</div>`;
-  board.innerHTML = html;
-
+  // 计数器 / 进度点 / 按钮状态
   $("wt-counter").textContent = `${wt.idx + 1} / ${wt.steps.length}`;
   $("wt-dots").innerHTML = wt.steps
     .map((_, k) => `<span class="wt-dot${k === wt.idx ? " active" : ""}" data-k="${k}"></span>`)
@@ -571,6 +570,100 @@ function renderWtStep() {
   });
   $("wt-prev").disabled = wt.idx === 0;
   $("wt-next").disabled = wt.idx === wt.steps.length - 1;
+}
+
+function renderWtVisual(data, prev) {
+  const vis = $("wt-visual");
+  if (!vis) return;
+
+  // ---- 数组 + 指针层：常驻 DOM，指针平滑滑动、格子变化弹跳 ----
+  if (Array.isArray(data.array)) {
+    let arr = vis.querySelector(".wt-array");
+    if (!arr) {
+      vis.innerHTML = "";
+      arr = document.createElement("div");
+      arr.className = "wt-array";
+      vis.appendChild(arr);
+      for (let k = 0; k < wt.arrayLen; k++) {
+        const cell = document.createElement("div");
+        cell.className = "wt-cell";
+        cell.dataset.k = k;
+        arr.appendChild(cell);
+      }
+      const ptrLayer = document.createElement("div");
+      ptrLayer.className = "wt-ptr-layer";
+      vis.appendChild(ptrLayer);
+      for (const name of Object.keys(data.pointers || {})) {
+        const p = document.createElement("div");
+        p.className = "wt-ptr";
+        p.dataset.ptr = name;
+        ptrLayer.appendChild(p);
+      }
+    }
+    const cells = arr.querySelectorAll(".wt-cell");
+    cells.forEach((c) => {
+      const k = Number(c.dataset.k);
+      const v = k < data.array.length ? data.array[k] : null;
+      const text = v === null ? "" : String(v);
+      if (c.textContent !== text) {
+        c.textContent = text;
+        // 值发生变化时播放弹跳动画
+        if (text !== "" && prev && Array.isArray(prev.array) && String(prev.array[k] ?? "") !== text) {
+          c.classList.remove("changed");
+          void c.offsetWidth;
+          c.classList.add("changed");
+          setTimeout(() => c.classList.remove("changed"), 600);
+        }
+      }
+      c.classList.toggle("hl", (data.highlight || []).includes(k));
+    });
+    // 指针平滑滑动到新位置
+    const ptrLayer = vis.querySelector(".wt-ptr-layer");
+    const ptrs = ptrLayer.querySelectorAll(".wt-ptr");
+    const ptrMap = data.pointers || {};
+    ptrs.forEach((p) => {
+      const name = p.dataset.ptr;
+      if (name in ptrMap) {
+        p.style.left = (Number(ptrMap[name]) * 64 + 8) + "px";
+        p.innerHTML = `▼ <b>${escapeHtml(name)}</b>=${escapeHtml(String(ptrMap[name]))}`;
+        p.style.opacity = "1";
+      } else {
+        p.style.opacity = "0";
+      }
+    });
+  } else {
+    vis.innerHTML = "";
+  }
+
+  // ---- 哈希表 / 栈 / 队列：内容变化时才重建（行级淡入） ----
+  let extraHtml = "";
+  if (data.map && Object.keys(data.map).length) {
+    extraHtml += `<div class="wt-map"><div class="wt-map-title">🗺 哈希表</div><table><tr><th>键</th><th>值</th></tr>`;
+    for (const [k, v] of Object.entries(data.map)) {
+      extraHtml += `<tr class="wt-row"><td>${escapeHtml(k)}</td><td>${escapeHtml(String(v))}</td></tr>`;
+    }
+    extraHtml += `</table></div>`;
+  }
+  for (const key of ["stack", "queue"]) {
+    if (Array.isArray(data[key]) && data[key].length) {
+      const label = key === "stack" ? "📚 栈" : "🎢 队列";
+      extraHtml += `<div class="wt-seq"><span class="wt-seq-label">${label}</span>`;
+      data[key].forEach((v) => { extraHtml += `<span class="wt-seq-item">${escapeHtml(String(v))}</span>`; });
+      extraHtml += `</div>`;
+    }
+  }
+  const newKey = JSON.stringify([data.map, data.stack, data.queue]);
+  if (newKey !== wt.extraKey) {
+    wt.extraKey = newKey;
+    const oldExtra = vis.querySelector(".wt-extra");
+    if (oldExtra) oldExtra.remove();
+    if (extraHtml) {
+      const div = document.createElement("div");
+      div.className = "wt-extra";
+      div.innerHTML = extraHtml;
+      vis.appendChild(div);
+    }
+  }
 }
 
 function wtStep(delta) {
@@ -597,7 +690,7 @@ function wtTogglePlay() {
     }
     wt.idx += 1;
     renderWtStep();
-  }, 1500);
+  }, 2000);
 }
 
 /* ---------- 答题模板 ---------- */
@@ -941,6 +1034,10 @@ function init() {
 
   $("btn-regen").addEventListener("click", () => {
     if (currentSlug) submitGenerate("https://leetcode.com/problems/" + currentSlug + "/");
+  });
+
+  $("ps-toggle").addEventListener("click", () => {
+    $("problem-sticky").classList.toggle("open");
   });
 
   $("btn-templates").addEventListener("click", openTemplatesLibrary);

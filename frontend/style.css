@@ -38,6 +38,9 @@ body {
   position: sticky;
   top: 0;
   overflow-y: auto;
+  overflow-x: hidden;
+  /* 预留滚动条位置：内容多少都不改变可视宽度 */
+  scrollbar-gutter: stable;
 }
 
 .brand { display: flex; gap: 10px; align-items: center; margin-bottom: 18px; }
@@ -457,7 +460,60 @@ html { overflow-y: scroll; }
   border: 1px solid rgba(52, 211, 153, 0.4);
 }
 
-/* ---------- 动画演示 ---------- */
+/* ---------- 固定的题目描述（滚动时置顶） ---------- */
+.problem-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 14px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+}
+.ps-toggle {
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--accent-hover);
+  font-weight: 600;
+  font-size: 13px;
+  text-align: left;
+  padding: 10px 14px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.ps-toggle:hover { color: var(--accent); }
+.ps-arrow { transition: transform 0.2s; font-size: 12px; }
+.problem-sticky.open .ps-arrow { transform: rotate(180deg); }
+.ps-body {
+  padding: 0 14px 14px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-dim);
+  max-height: 160px;
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
+  position: relative;
+  transition: max-height 0.3s ease;
+}
+.ps-body::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 28px;
+  background: linear-gradient(transparent, var(--bg-panel));
+  pointer-events: none;
+}
+.problem-sticky.open .ps-body { max-height: none; }
+.problem-sticky.open .ps-body::after { display: none; }
+
+/* ---------- 动画演示（真正的动画：指针滑动、格子弹跳、内容淡入） ---------- */
 .wt-tip { font-size: 13px; color: var(--text-dim); margin-bottom: 14px; }
 .wt-board {
   background: var(--bg-input);
@@ -468,8 +524,18 @@ html { overflow-y: scroll; }
   margin-bottom: 14px;
 }
 .wt-title { font-size: 16px; font-weight: 700; margin-bottom: 14px; color: var(--accent-hover); }
-.wt-array { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; }
+
+.wt-visual { position: relative; }
+.wt-array {
+  display: flex;
+  gap: 4px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding: 2px 0 4px;
+  min-height: 58px;
+}
 .wt-cell {
+  flex: 0 0 60px;
   width: 60px;
   height: 52px;
   background: #2a3a55;
@@ -480,17 +546,35 @@ html { overflow-y: scroll; }
   justify-content: center;
   font-size: 15px;
   font-weight: 600;
-  transition: all 0.25s;
+  transition: background-color 0.3s, border-color 0.3s, transform 0.25s, box-shadow 0.25s;
 }
-.wt-cell.hl { background: rgba(248, 113, 113, 0.35); border-color: var(--red); transform: translateY(-3px); }
-.wt-pointers { min-height: 24px; margin-bottom: 8px; }
-.wt-ptr { font-size: 12px; color: var(--yellow); margin-top: 2px; }
+.wt-cell.hl {
+  background: rgba(248, 113, 113, 0.35);
+  border-color: var(--red);
+  transform: translateY(-3px);
+}
+.wt-cell.changed { animation: cellPop 0.55s ease; }
+@keyframes cellPop {
+  0% { transform: scale(1.18); box-shadow: 0 0 14px rgba(79, 140, 255, 0.7); }
+  100% { transform: scale(1); box-shadow: none; }
+}
+.wt-ptr-layer { position: relative; height: 28px; margin: 2px 0 6px; }
+.wt-ptr {
+  position: absolute;
+  top: 0;
+  font-size: 12px;
+  color: var(--yellow);
+  white-space: nowrap;
+  transition: left 0.55s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s;
+}
 .wt-ptr b { color: var(--red); }
-.wt-map { margin: 10px 0; }
+.wt-extra { margin-top: 6px; }
+.wt-map { margin: 8px 0; }
 .wt-map-title { font-size: 13px; color: var(--text-dim); margin-bottom: 6px; }
 .wt-map table { border-collapse: collapse; }
 .wt-map th, .wt-map td { border: 1px solid var(--border); padding: 4px 14px; font-size: 13px; }
 .wt-map th { background: #2a3a55; }
+.wt-row { animation: wtFadeIn 0.3s ease; }
 .wt-seq { display: flex; align-items: center; gap: 6px; margin: 8px 0; flex-wrap: wrap; }
 .wt-seq-label { font-size: 13px; color: var(--text-dim); }
 .wt-seq-item {
@@ -500,6 +584,7 @@ html { overflow-y: scroll; }
   border-radius: 6px;
   padding: 3px 10px;
   font-size: 13px;
+  animation: wtFadeIn 0.3s ease;
 }
 .wt-note {
   margin-top: 12px;
@@ -510,6 +595,11 @@ html { overflow-y: scroll; }
   border-left: 3px solid var(--green);
   padding: 10px 14px;
   border-radius: 0 8px 8px 0;
+}
+.wt-note.fade { animation: wtFadeIn 0.4s ease; }
+@keyframes wtFadeIn {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: none; }
 }
 .wt-controls {
   display: flex;
