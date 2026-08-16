@@ -181,29 +181,27 @@ function renderUserArea() {
   if (!areas.length) return;
   areas.forEach((el) => {
     if (auth.user) {
-      const vipHtml = isVip()
-        ? `<span class="vip-badge">👑 VIP</span>`
-        : `<button class="ua-action vip-buy" id="ua-vip">💖 升级 VIP</button>`;
-      const creditsHtml = `<span class="credits-badge" title="${isVip() ? "VIP 每道题 0.1 元" : "普通用户每道题 1 元"}（1 次=0.1 元）">🎫 ${auth.user.credits || 0}次</span>`;
-      const adminHtml = auth.user.is_admin ? `<button class="ua-action" id="ua-admin">👑 管理</button>` : "";
+      const vipBadge = isVip() ? `<span class="vip-badge">👑 VIP</span>` : "";
+      const creditsBadge = `<span class="credits-badge" title="${isVip() ? "VIP 每道题 0.1 元" : "普通用户每道题 1 元"}（1 次=0.1 元）">🎫 ${auth.user.credits || 0}次</span>`;
+      const upgradeBtn = isVip() ? "" : `<span class="ua-divider"></span><button class="ua-btn" data-act="vip">💖 升级VIP</button>`;
+      const adminBtn = auth.user.is_admin ? `<span class="ua-divider"></span><button class="ua-btn" data-act="admin">👑 管理</button>` : "";
       el.innerHTML = `<div class="ua-inner">
-        <span class="ua-name">👤 ${escapeHtml(auth.user.username)} ${vipHtml}</span>
-        <span>${creditsHtml}${adminHtml}<button class="ua-action" id="ua-logout">退出</button></span>
+        <span class="ua-user">👤 ${escapeHtml(auth.user.username)}</span>
+        <span class="ua-badges">${vipBadge}${creditsBadge}</span>
+        ${upgradeBtn}
+        ${adminBtn}
+        <span class="ua-divider"></span>
+        <button class="ua-btn ua-btn-danger" data-act="logout">退出</button>
       </div>`;
     } else {
       el.innerHTML = `<div class="ua-inner">
-        <span class="ua-name" style="color:var(--text-dim)">👤 游客（可浏览 hot100）</span>
-        <span><button class="ua-action" id="ua-login">登录</button> ·
-             <button class="ua-action" id="ua-register">注册</button></span>
+        <span class="ua-user ua-guest">👤 游客（可浏览 hot100）</span>
+        <span class="ua-divider"></span>
+        <button class="ua-btn" data-act="login">登录</button>
+        <button class="ua-btn ua-btn-primary" data-act="register">注册</button>
       </div>`;
     }
   });
-  // 绑定事件（每个容器）
-  document.querySelectorAll(".ua-login").forEach((b) => b.addEventListener("click", showLoginModal));
-  document.querySelectorAll(".ua-register").forEach((b) => b.addEventListener("click", showRegisterModal));
-  document.querySelectorAll(".ua-logout").forEach((b) => b.addEventListener("click", logoutUser));
-  document.querySelectorAll(".ua-vip").forEach((b) => b.addEventListener("click", showDonateModal));
-  document.querySelectorAll(".ua-admin").forEach((b) => b.addEventListener("click", showGrantModal));
 }
 
 /* 💖 升级 VIP / 支持（微信/支付宝收款码，最低 1 元） */
@@ -1807,6 +1805,20 @@ function init() {
   $("tpl-search").addEventListener("input", () => {
     state.tplQuery = $("tpl-search").value;
     if (state.templates) renderTemplatesList(state.templates);
+  });
+
+  // 右上角用户中心：事件委托（data-act 路由），避免选择器错配导致点击无反应
+  document.querySelectorAll(".user-area").forEach((area) => {
+    area.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-act]");
+      if (!btn) return;
+      const act = btn.dataset.act;
+      if (act === "login") showLoginModal();
+      else if (act === "register") showRegisterModal();
+      else if (act === "logout") logoutUser();
+      else if (act === "vip") showDonateModal();
+      else if (act === "admin") showGrantModal();
+    });
   });
 
   // 分组

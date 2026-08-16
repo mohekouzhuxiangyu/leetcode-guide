@@ -886,22 +886,50 @@ mark {
 }
 .btn-theme:hover { border-color: var(--accent); color: var(--accent); }
 
-/* 用户区（内嵌于各面板头部，随内容布局，不再单独占一行） */
+/* ---------- 右上角用户中心 ---------- */
 .user-area { font-size: 13px; }
 .user-area .ua-inner {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
   background: var(--bg-panel);
   border: 1px solid var(--border);
   border-radius: 999px;
-  padding: 4px 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  padding: 5px 14px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+  max-width: 46vw;
+  flex-wrap: wrap;
 }
-.user-area .ua-name { color: var(--text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.user-area .ua-action { color: var(--accent); cursor: pointer; background: none; border: none; font-size: 13px; padding: 0; }
-.user-area .ua-action:hover { text-decoration: underline; }
+.ua-user {
+  color: var(--text);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 160px;
+}
+.ua-guest { color: var(--text-dim); font-weight: 400; }
+.ua-badges { display: flex; align-items: center; gap: 6px; }
+.ua-divider { width: 1px; height: 16px; background: var(--border); }
+.ua-btn {
+  background: none;
+  border: 1px solid transparent;
+  color: var(--accent);
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.ua-btn:hover { border-color: var(--accent); background: rgba(79, 140, 255, 0.1); }
+.ua-btn-primary { background: var(--accent); color: #fff; font-weight: 600; }
+.ua-btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.ua-btn-danger { color: var(--text-dim); }
+.ua-btn-danger:hover { color: var(--red); border-color: var(--red); background: rgba(220, 38, 38, 0.08); }
 
 /* ---------- 认证表单 ---------- */
 .modal-form .modal-label { display: block; font-size: 12px; color: var(--text-dim); margin: 8px 0 4px; }

@@ -65,7 +65,7 @@
 
 /* 侧栏杂项控件 */
 .btn-mini { color: var(--text-dim); border-color: var(--border); }
-.ua-action { color: var(--accent); }
+.ua-btn { color: var(--accent); }
 .btn-theme { color: var(--text-dim); }
 .h-del { color: var(--text-dim); }
 .history-group { color: #1d4ed8; }
