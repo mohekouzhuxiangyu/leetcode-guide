@@ -1705,7 +1705,7 @@ function init() {
     const link = $("theme-css");
     if (link) link.href = "/assets/theme-" + theme + ".css?v=1";
     const hl = $("hljs-theme");
-    if (hl) hl.href = "/assets/vendor/github-" + (theme === "light" ? "" : "dark") + ".min.css";
+    if (hl) hl.href = "/assets/vendor/github" + (theme === "light" ? "" : "-dark") + ".min.css";
   }
   const savedTheme = localStorage.getItem("lc_theme") || "dark";
   document.documentElement.dataset.theme = savedTheme;
