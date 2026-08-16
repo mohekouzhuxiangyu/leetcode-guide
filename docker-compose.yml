@@ -1,0 +1,47 @@
+# ============================================================
+# 力扣算法学习助手 · Docker 一键部署
+#
+# 用法：
+#   1. cp .env.example .env  并填入 DEEPSEEK_API_KEY 等配置
+#   2. docker compose up -d --build
+#   3. 打开 http://127.0.0.1:8001
+#
+# 说明：
+#   - 自带 PostgreSQL 16 数据库，数据持久化在 pgdata 卷
+#   - 收款码目录 ./frontend/qrcodes 挂载进容器，上传后即时生效
+#   - .env 中的 DATABASE_URL 会被覆盖为容器内数据库连接
+# ============================================================
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: leetcode
+      POSTGRES_PASSWORD: leetcode_pass
+      POSTGRES_DB: leetcode_guide
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U leetcode -d leetcode_guide"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://leetcode:leetcode_pass@db:5432/leetcode_guide
+      APP_BASE_URL: http://127.0.0.1:8001
+    volumes:
+      - ./frontend/qrcodes:/app/frontend/qrcodes
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

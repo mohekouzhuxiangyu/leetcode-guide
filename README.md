@@ -1,129 +1,145 @@
 # 🧠 力扣算法学习助手 (LeetCode Algorithm Learning Assistant)
 
 输入任意力扣题目链接（Hot 100 或任意题目），由 **LangChain / LangGraph + DeepSeek** 搭建的多 Agent
-工作流自动生成：
+工作流自动生成算法解析、动画演示、流程图与多语言代码。
 
-1. 📝 **算法解析** — 中文题解：题目概述、思路分析、算法步骤、复杂度、边界情况、举一反三
-2. 🔄 **算法流程图** — Mermaid 流程图（浏览器实时渲染）
-3. 💻 **多语言代码** — Python3 / Java / C++ 三种语言的 LeetCode 模板题解
-4. 📚 **历史记录** — 已生成的题目自动保存，可随时回看、重新生成、删除；支持开新页面问新题
+## ✨ 功能总览
 
-## 架构
+| 功能 | 说明 |
+|---|---|
+| 📥 单条 / 批量生成 | 输入链接自动生成：中文题目、算法解析、逐步动画演示、流程图、Python/Java/C++ 代码、答题模板 |
+| 🆓 hot100 免费浏览 | 游客可查看全部 100 道热题（只读）；登录后管理自己的题目 |
+| 🗂️ 分组 / 分类 / 难度 / 搜索 | 题目按算法分类、难度、自定义分组管理，支持关键词搜索 |
+| 🎬 动画演示 | 具体示例逐步推演（数组/指针/哈希表可视化，可播放） |
+| 📋 答题模板库 | 21 类算法固定 Python 模板，支持标签筛选与搜索 |
+| 📝 题目心得 | 每道题可写 Markdown 心得（富文本预览） |
+| 👤 用户系统 | 注册 / 登录 / 邮箱验证（SMTP，未配置时开发模式直出验证链接） |
+| 👑 VIP / 计费 | 普通 1 元/题，VIP 0.1 元/题；扫码捐赠 ≥1 元自助开通永久 VIP（诚信制） |
+| 💰 支持本站 | 微信/支付宝收款码自愿捐赠，含维护运维费用说明页 |
+| 🌙/☀️ 主题 | 暗夜/白日两套独立 CSS，一键切换 |
+| 🐘 存储 | PostgreSQL（`db/init.sql` 建库建表脚本） |
+
+## 🏗️ 技术架构
 
 ```
-用户输入题目链接
-      │
-      ▼
-┌─────────────────────────────┐
-│  FastAPI 后端 (backend/)     │
-│  ┌────────────────────────┐ │
-│  │ LangGraph Agent 工作流  │ │
-│  │  fetch_node ──► analyze │ │
-│  │   ──► flowchart ──► code│ │
-│  └────────────────────────┘ │
-│  LeetCode GraphQL 抓取器     │
-│  DeepSeek (deepseek-chat)    │
-│  JSON 历史记录存储 (data/)    │
-└─────────────────────────────┘
-      │
-      ▼
-┌─────────────────────────────┐
-│  前端 (frontend/)            │
-│  输入链接 · 进度展示 · 标签页  │
-│  Mermaid 渲染 · 代码高亮      │
-│  历史侧栏 · 深链 ?slug=       │
-└─────────────────────────────┘
+浏览器前端 (frontend/：原生 HTML/JS + Mermaid + highlight.js + marked)
+      │  REST API
+FastAPI 后端 (backend/)
+  ├── LangGraph 多 Agent 工作流 (graph.py)
+  │     抓取题目 → 中文翻译 → 算法解析 → 动画演示 → 流程图 → 代码
+  ├── LeetCode GraphQL 抓取器 (leetcode.py)  含中文标题与插图
+  ├── 用户系统 (auth.py)   注册/登录/邮箱验证/会话
+  ├── VIP 计费 (vip.py)    永久VIP/次数充值/自助开通
+  └── 历史存储 (history.py) PostgreSQL（共享目录 + 按用户隔离）
+数据库：PostgreSQL（users / sessions / records / groups / vip_orders / user_notes）
 ```
 
-- **backend/graph.py** — LangGraph `StateGraph`：4 个节点（抓取 → 分析 → 流程图 → 代码），
-  每个节点是一个独立 Agent（专用提示词 + DeepSeek LLM），逐节点上报进度，单节点失败不影响整体。
-- **backend/leetcode.py** — 通过 LeetCode 官方 GraphQL API 抓取题目原文/难度/标签/模板，
-  支持 `leetcode.com` 与 `leetcode.cn`；抓取失败自动回退为「模型知识生成」。
-- **backend/history.py** — 按题目 slug 去重的 JSON 持久化。
-- **backend/app.py** — FastAPI：`POST /api/generate`（后台任务）→ `GET /api/jobs/{id}`（轮询进度）→
-  历史 CRUD + 静态前端托管。
+## 🚀 一键部署
 
-## 快速开始
+### 方式一：Docker（推荐，最省事）
 
-前置依赖：**PostgreSQL**（数据存储）。新环境部署步骤：
+```bash
+# 1. 准备配置
+cp .env.example .env        # 填入 DEEPSEEK_API_KEY（必填）
+# 2. 一键启动（自动拉起 PostgreSQL + 应用，自动建表）
+docker compose up -d --build
+# 3. 打开
+open http://127.0.0.1:8001
+```
+
+- 自带 PostgreSQL 16，数据持久化在 `pgdata` 卷
+- 收款码目录 `./frontend/qrcodes` 已挂载进容器，上传后即时生效
+- 停止：`docker compose down`（加 `-v` 删除数据卷）
+
+### 方式二：脚本部署（本机已有 Python + PostgreSQL）
+
+```bash
+./deploy.sh          # 安装依赖 + 初始化数据库 + 启动服务
+./deploy.sh --setup  # 只做环境准备
+./deploy.sh --start  # 只启动服务
+```
+
+### 方式三：手动部署
 
 ```bash
 # 0. 初始化数据库（新环境只需一次）
 createdb leetcode_guide
-psql -U <你的用户> -d leetcode_guide -f db/init.sql   # 创建表结构
+psql -d leetcode_guide -f db/init.sql
 
-# 1. 配置 API Key 与数据库连接（已包含 .env，按需修改）
-cp .env.example .env
-#    .env 需包含：
-#      DEEPSEEK_API_KEY=sk-xxx
-#      DATABASE_URL=postgresql://localhost:5432/leetcode_guide
+# 1. 配置
+cp .env.example .env   # 填入 DEEPSEEK_API_KEY、DATABASE_URL 等
 
-# 2. 创建虚拟环境并安装依赖
+# 2. 依赖与启动
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-
-# 3. 启动服务（默认端口 8001，可用 PORT 环境变量修改）
-.venv/bin/python -m uvicorn backend.app:app --host 127.0.0.1 --port 8001
-# 或
-./start.sh
+.venv/bin/python -m uvicorn backend.app:app --host 0.0.0.0 --port 8001
 ```
 
-打开浏览器访问 **http://127.0.0.1:8001**
+## ⚙️ 配置项（.env）
 
-> 从旧 JSON 存储迁移：`data/history.json` 是旧版存储（现仅作备份），
-> 迁移命令：`.venv/bin/python -m backend.migrate_json_to_pg`
+| 变量 | 必填 | 说明 |
+|---|---|---|
+| `DEEPSEEK_API_KEY` | ✅ | DeepSeek API Key |
+| `DEEPSEEK_BASE_URL` | | 默认 `https://api.deepseek.com` |
+| `DEEPSEEK_MODEL` | | 默认 `deepseek-chat` |
+| `DATABASE_URL` | ✅ | PostgreSQL 连接串，如 `postgresql://localhost:5432/leetcode_guide` |
+| `APP_BASE_URL` | | 部署地址，用于生成验证链接等 |
+| `SMTP_HOST/PORT/USER/PASS/FROM` | | 邮箱验证；留空 = 开发模式（验证链接打印日志并返回前端） |
+| `ADMIN_EMAIL` | | 管理员邮箱（备用 VIP 管理） |
+| `ALIPAY_*` / `PAYJS_*` | | 官方/第三方支付参数（当前为扫码捐赠自助开通模式，可留空） |
 
-## 使用说明
+## 💰 计费与 VIP
 
-0. **用户系统**：首次使用请先注册（需邮箱验证）。注册后自动认领历史遗留数据；
-   未配置 SMTP 时（开发模式），注册响应与服务器日志会直接给出验证链接。
+| 身份 | 生成价格 | 获取方式 |
+|---|---|---|
+| 普通用户 | **1 元/题**（10 次） | 注册即默认 |
+| VIP | **0.1 元/题**（1 次） | 右上角「💖 升级 VIP」→ 扫码捐赠 ≥1 元 → 点「我已支付」自动开通（永久，诚信制） |
 
-1. 在输入框粘贴力扣题目链接（`leetcode.com` 或 `leetcode.cn` 均可），点击「⚡ 生成解析」；
-2. 等待 Agent 工作流执行（约 30~90 秒），可实时看到 5 个阶段进度；
-3. 生成完成后在四个标签页查看：**题目信息 / 算法解析 / 流程图 / 代码**；
-4. 流程图支持一键复制 Mermaid 源码；代码支持 Python3/Java/C++ 切换与复制；
-5. 左侧「历史记录」保存所有问过的题目，点击即可回看；🗑 可删除；
-6. **开新页面问新题**：直接新开一个浏览器标签页访问同一地址即可（互不影响），
-   也可用 `http://127.0.0.1:8001/?slug=two-sum` 深链直达某题记录。
+- 1 次 = 0.1 元；捐赠 1 元 = 10 次
+- 生成按题扣次（单条/批量），次数不足自动提示
+- 管理员（`ADMIN_EMAIL`）可手动开通 VIP / 充值次数（备用）
 
-## 项目结构
+## 📍 收款码放置
+
+把微信/支付宝收款码图片放入（**不入 git 仓库**，已 gitignore）：
+
+```
+frontend/qrcodes/wechat.png   或  wechat.jpg
+frontend/qrcodes/alipay.png   或  alipay.jpg
+```
+
+## 📚 使用说明
+
+1. 右上角注册/登录（邮箱验证；未配置 SMTP 时弹窗直接给验证链接）
+2. 输入区「⚡ 单条生成 / 🚀 批量生成」粘贴力扣链接（`leetcode.com` 或 `leetcode.cn`）
+3. 生成后查看：顶部固定题目信息 · 算法解析 · 🎬 动画演示 · 🔄 流程图（可缩放）· 💻 代码 · 📋 答题模板 · 📝 心得
+4. 左侧：分组 / 算法分类 / 难度筛选 + 搜索；点击题目整行切换
+5. 「📋 算法模板库」按算法找模板；「💖 升级 VIP」页含计费与运维费用说明
+
+## 📁 项目结构
 
 ```
 leetcode-guide/
 ├── backend/
-│   ├── app.py          # FastAPI 主应用
-│   ├── graph.py        # LangGraph 多 Agent 工作流
-│   ├── leetcode.py     # LeetCode GraphQL 抓取器
-│   ├── llm.py          # DeepSeek LLM 工厂
-│   ├── config.py       # 配置（.env）
-│   └── history.py      # 历史记录存储
-├── frontend/
-│   ├── index.html      # 页面
-│   ├── app.js          # 交互逻辑
-│   └── style.css       # 样式
-├── data/history.json   # 历史记录（自动生成）
-├── .env                # DeepSeek API Key
-├── requirements.txt
-└── start.sh
+│   ├── app.py            # FastAPI 主应用（接口 + 前端托管）
+│   ├── graph.py          # LangGraph 多 Agent 工作流
+│   ├── leetcode.py       # LeetCode 抓取（中文标题/插图）
+│   ├── auth.py           # 用户系统（注册/登录/邮箱验证）
+│   ├── vip.py            # VIP 计费/自助开通/备用支付通道
+│   ├── history.py        # PostgreSQL 存储（共享+用户隔离）
+│   ├── db.py             # 数据库连接
+│   └── templates.py      # 21 类算法模板
+├── frontend/             # 前端（index.html / app.js / style.css / 双主题 CSS）
+│   └── qrcodes/          # 收款码（gitignore，自行上传）
+├── db/init.sql           # 建库建表脚本（幂等）
+├── deploy.sh             # 一键部署脚本
+├── Dockerfile / docker-compose.yml
+└── requirements.txt
 ```
 
-## 说明
+## ❓ 常见问题
 
-- 生成过程调用 DeepSeek API（默认模型 `deepseek-chat`），会产生 token 费用；
-- 题目原文优先从力扣在线抓取，抓取失败时由模型根据知识补全（页面会有标注）；
-- 所有文件均可自由修改：更换模型、调整提示词、增加语言等都在 `backend/` 下完成。
-
-## VIP 会员与支付宝支付
-
-- **hot100 免费**：共享目录（只读），所有注册用户可查看
-- **VIP 权限**：新增题目、批量生成、删除/编辑题目、分组管理需开通 VIP
-- **开通方式**：侧栏「开通 VIP」→ 选择套餐（月卡 ¥9.9 / 年卡 ¥99）→ 支付宝支付
-- 生产环境配置（`.env`）：
-  ```
-  ALIPAY_APP_ID=你的支付宝应用 app_id
-  ALIPAY_PRIVATE_KEY=应用私钥（RSA2）
-  ALIPAY_PUBLIC_KEY=支付宝公钥
-  ALIPAY_NOTIFY_URL=https://你的域名/api/vip/alipay/notify
-  ALIPAY_RETURN_URL=https://你的域名/?vip=ok
-  ```
-- 未配置支付宝时为**开发模式**：点击支付直接模拟成功（重定向回 `/?vip=ok`），便于本地联调
+- **邮箱验证收不到**：未配置 SMTP 时为开发模式，验证链接会显示在注册弹窗并打印到服务器日志
+- **生成提示余额不足**：普通 1 元/题、VIP 0.1 元/题，按次扣费；升级 VIP 或联系管理员充值
+- **收款码不显示**：确认文件在 `frontend/qrcodes/` 且名为 `wechat.png` / `alipay.png`（或 .jpg）
+- **Docker 部署**：`docker compose up -d --build`，`docker compose logs -f app` 看日志
