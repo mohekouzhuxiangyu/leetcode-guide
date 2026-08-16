@@ -815,6 +815,18 @@ function showProgress() {
   $("progress-msg").textContent = "";
 }
 
+/* 手机端判断：窄屏时内容面板直接显示在侧栏紧邻下方，并滚动到可见位置 */
+function isMobile() {
+  return window.matchMedia && window.matchMedia("(max-width: 860px)").matches;
+}
+
+function scrollPanelIntoView(el) {
+  if (!isMobile() || !el) return;
+  requestAnimationFrame(() => {
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+}
+
 function showResult() {
   hide($("input-panel"));
   hide($("progress-panel"));
@@ -822,6 +834,7 @@ function showResult() {
   hide($("templates-panel"));
   hide($("vip-panel"));
   show($("result-panel"));
+  scrollPanelIntoView($("result-panel"));
 }
 
 function showError(msg) {
@@ -1420,6 +1433,7 @@ async function openTemplatesLibrary() {
   hide($("result-panel"));
   hide($("error-panel"));
   show($("templates-panel"));
+  scrollPanelIntoView($("templates-panel"));
 }
 
 /* 模板库顶部分类标签（内置 + 用户自定义分类去重） */

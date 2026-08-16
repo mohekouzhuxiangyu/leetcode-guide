@@ -478,7 +478,7 @@ html { overflow-y: scroll; }
     max-height: none;
     overflow-y: visible;
   }
-  .result-left .ps-body { max-height: 40vh; }
+  .result-left .ps-body { max-height: none; }   /* 手机端题目信息完整显示，不做高度裁剪 */
   .result-right { overflow: visible; }
   .fixed-user { position: static; display: flex; justify-content: flex-end; margin-top: 8px; padding: 0 16px; }
 
@@ -512,7 +512,7 @@ html { overflow-y: scroll; }
   .donate-actions .btn { flex: 1 1 100%; }   /* 捐赠两按钮在手机上竖排 */
   .donate-qr img { width: min(220px, 82vw); }
   .templates-header h2 { font-size: 18px; }
-  .result-left .ps-body { max-height: 35vh; }
+  .result-left .ps-body { max-height: none; }   /* 手机端题目信息完整显示 */
   .modal { width: 94vw; }
   .tpl-card { padding: 10px 12px; }
   .mermaid-container { padding: 10px; }
