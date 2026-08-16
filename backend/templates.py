@@ -6,6 +6,20 @@
 - python: 可套用的 Python 代码骨架
 """
 
+# 单调栈模板（「栈」与「单调栈」两个分类共用同一骨架）
+_MONOTONIC_STACK_PY = '''class Solution:
+    def solve(self, nums):
+        n = len(nums)
+        ans = [0] * n
+        stack = []                           # 维护单调递减栈（存下标）
+        for i, x in enumerate(nums):
+            while stack and nums[stack[-1]] < x:   # 弹出条件按题目调整
+                j = stack.pop()              # 栈顶的“下一个更大元素”就是 x
+                ans[j] = i - j
+            stack.append(i)
+        return ans
+'''
+
 CATEGORY_TEMPLATES: dict[str, dict] = {
     "哈希表": {
         "name": "哈希表查重 / 配对",
@@ -201,18 +215,12 @@ class Solution:
     "栈": {
         "name": "单调栈",
         "when": "下一个更大/更小元素、柱状图中最大矩形、每日温度、接雨水",
-        "python": '''class Solution:
-    def solve(self, nums):
-        n = len(nums)
-        ans = [0] * n
-        stack = []                           # 维护单调递减栈（存下标）
-        for i, x in enumerate(nums):
-            while stack and nums[stack[-1]] < x:   # 弹出条件按题目调整
-                j = stack.pop()              # 栈顶的“下一个更大元素”就是 x
-                ans[j] = i - j
-            stack.append(i)
-        return ans
-''',
+        "python": _MONOTONIC_STACK_PY,
+    },
+    "单调栈": {
+        "name": "单调栈",
+        "when": "下一个更大/更小元素、柱状图中最大矩形、每日温度、接雨水",
+        "python": _MONOTONIC_STACK_PY,
     },
     "堆": {
         "name": "堆（优先队列）",
