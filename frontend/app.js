@@ -182,12 +182,13 @@ function renderUserArea() {
   areas.forEach((el) => {
     if (auth.user) {
       const vipHtml = isVip()
-        ? `<span class="vip-badge" title="VIP 有效期至 ${escapeHtml(auth.user.vip_expires_at || "永久")}">👑 VIP</span>`
-        : `<button class="ua-action vip-buy" id="ua-vip">💖 支持</button>`;
+        ? `<span class="vip-badge">👑 VIP</span>`
+        : `<span class="credits-badge" title="每解析一题消耗 1 次（0.1 元/题）">🎫 ${auth.user.credits || 0}次</span>`;
+      const supportHtml = isVip() ? "" : `<button class="ua-action vip-buy" id="ua-vip">💖 支持</button>`;
       const adminHtml = auth.user.is_admin ? `<button class="ua-action" id="ua-admin">👑 管理</button>` : "";
       el.innerHTML = `<div class="ua-inner">
         <span class="ua-name">👤 ${escapeHtml(auth.user.username)} ${vipHtml}</span>
-        <span>${adminHtml}<button class="ua-action" id="ua-logout">退出</button></span>
+        <span>${supportHtml}${adminHtml}<button class="ua-action" id="ua-logout">退出</button></span>
       </div>`;
     } else {
       el.innerHTML = `<div class="ua-inner">
@@ -227,8 +228,8 @@ function showDonateModal() {
         <div class="donate-qr-missing hidden" id="qr-alipay-missing">管理员尚未上传收款码</div>
       </div>
     </div>
-    <div class="modal-msg donate-tip">💡 请使用微信/支付宝 App 扫码，打赏任意金额即可；
-      如需解锁 VIP 功能，请在打赏备注中写明你的用户名，并联系管理员开通。</div>`;
+    <div class="modal-msg donate-tip">💡 解析每道题消耗 <b>1 次</b>（0.1 元/题），开通 <b>永久 VIP</b> 后不限次数。
+      打赏后请备注用户名，联系管理员充值次数或开通 VIP。</div>`;
   openModal("💖 自愿捐款", body, `<button class="btn btn-small" id="modal-cancel">关闭</button>`);
   $("modal-cancel").addEventListener("click", closeModal);
   document.querySelectorAll(".donate-amt").forEach((b) => {
@@ -249,34 +250,50 @@ function qrOnError(el, base) {
   }
 }
 
-/* 👑 VIP 管理（仅管理员）：按邮箱为捐款用户开通 VIP */
+/* 👑 VIP 管理（仅管理员）：开通永久 VIP / 充值解析次数 */
 function showGrantModal() {
   openModal(
     "VIP 管理（为捐款用户开通）",
     `<div class="modal-form">
        <label class="modal-label">用户邮箱</label>
        <input id="grant-email" class="modal-input" type="email" spellcheck="false" placeholder="donor@example.com" />
-       <label class="modal-label">开通天数</label>
-       <input id="grant-days" class="modal-input" type="number" value="30" min="1" step="1" />
+       <label class="modal-label">操作</label>
+       <select id="grant-mode" class="modal-input">
+         <option value="vip">开通永久 VIP（不限次数）</option>
+         <option value="credits">充值解析次数（0.1 元/次）</option>
+       </select>
+       <label class="modal-label" id="grant-count-label">充值次数</label>
+       <input id="grant-count" class="modal-input" type="number" value="10" min="1" step="1" />
      </div>`,
     `<button class="btn btn-small" id="modal-cancel">取消</button>
-     <button class="btn btn-primary btn-small" id="modal-ok">开通 VIP</button>`
+     <button class="btn btn-primary btn-small" id="modal-ok">确认</button>`
   );
+  const modeSel = $("grant-mode");
+  const countLabel = $("grant-count-label");
+  const countInput = $("grant-count");
+  const syncMode = () => {
+    const isCredits = modeSel.value === "credits";
+    countLabel.textContent = isCredits ? "充值次数（0.1 元/次）" : "（永久 VIP 无需次数）";
+    countInput.disabled = !isCredits;
+  };
+  syncMode();
+  modeSel.addEventListener("change", syncMode);
   $("modal-cancel").addEventListener("click", closeModal);
   $("modal-ok").addEventListener("click", async () => {
     const email = $("grant-email").value.trim();
-    const days = parseInt($("grant-days").value, 10) || 30;
+    const mode = modeSel.value;
+    const count = parseInt($("grant-count").value, 10) || 10;
     if (!email) { modalError("请输入用户邮箱"); return; }
     try {
       const resp = await apiFetch("/api/vip/grant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, days }),
+        body: JSON.stringify({ email, mode, count }),
       });
       const data = await resp.json();
       if (!resp.ok) { modalError(data.detail || "操作失败"); return; }
       closeModal();
-      toast(`已为 ${email} 开通 ${days} 天 VIP`);
+      toast(data.detail || "操作成功");
     } catch (err) {
       modalError("操作失败：" + err.message);
     }

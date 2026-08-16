@@ -123,7 +123,8 @@ def _user_public(row) -> dict:
         "email": row["email"],
         "email_verified": row["email_verified"],
         "vip": bool(row["vip"]),
-        "vip_expires_at": row["vip_expires_at"].isoformat() if row.get("vip_expires_at") else None,
+        "vip_expires_at": None,  # VIP 为永久，无期限
+        "credits": int(row["credits"] or 0),
         "is_admin": bool(ADMIN_EMAIL) and row["email"].strip().lower() == ADMIN_EMAIL.strip().lower(),
     }
 
@@ -132,7 +133,7 @@ def get_user_by_token(token: str):
     if not token:
         return None
     row = query(
-        """SELECT u.id, u.username, u.email, u.email_verified, u.vip, u.vip_expires_at
+        """SELECT u.id, u.username, u.email, u.email_verified, u.vip, u.vip_expires_at, u.credits
            FROM sessions s JOIN users u ON u.id = s.user_id
            WHERE s.token = %s""",
         (token,),
@@ -146,14 +147,8 @@ def get_user_row(user_id: int):
 
 
 def is_vip(row) -> bool:
-    """VIP 是否有效（开通且未过期；vip_expires_at 为空视为永久）。"""
-    if not row or not row["vip"]:
-        return False
-    if not row.get("vip_expires_at"):
-        return True
-    from datetime import datetime, timezone
-
-    return row["vip_expires_at"] > datetime.now(timezone.utc)
+    """VIP 是否有效（永久有效，无期限限制）。"""
+    return bool(row and row["vip"])
 
 
 def logout(token: str) -> None:

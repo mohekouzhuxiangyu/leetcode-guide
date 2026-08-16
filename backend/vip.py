@@ -205,23 +205,28 @@ def mark_paid(order_no: str) -> bool:
     return True
 
 
-def grant_vip(email: str, days: int) -> bool:
-    """管理员手动为用户开通/续期 VIP（自愿捐款后人工开通）。"""
+def grant_vip(email: str) -> bool:
+    """管理员手动为用户开通**永久** VIP（自愿捐款后人工开通）。"""
     email = (email or "").strip().lower()
-    if not email or days <= 0:
+    if not email:
         return False
-    row = query("SELECT id, vip_expires_at FROM users WHERE email = %s", (email,), fetch="one")
-    if not row:
-        return False
-    base = datetime.now(timezone.utc)
-    if row["vip_expires_at"] and row["vip_expires_at"] > base:
-        base = row["vip_expires_at"]
-    new_exp = base + timedelta(days=days)
-    query(
-        "UPDATE users SET vip=TRUE, vip_expires_at=%s WHERE id=%s",
-        (new_exp, row["id"]),
+    n = query(
+        "UPDATE users SET vip = TRUE, vip_expires_at = NULL WHERE email = %s",
+        (email,),
     )
-    return True
+    return bool(n)
+
+
+def grant_credits(email: str, count: int) -> bool:
+    """管理员为用户充值解析次数（0.1 元/次）。"""
+    email = (email or "").strip().lower()
+    if not email or count <= 0:
+        return False
+    n = query(
+        "UPDATE users SET credits = credits + %s WHERE email = %s",
+        (int(count), email),
+    )
+    return bool(n)
 
 
 def verify_alipay_notify(form: dict) -> bool:

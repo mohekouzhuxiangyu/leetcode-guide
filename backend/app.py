@@ -160,18 +160,24 @@ async def vip_order_status(order_no: str, user: dict = Depends(get_current_user)
 
 class VipGrantRequest(BaseModel):
     email: str
-    days: int = 30
+    mode: str = "vip"      # vip=开通永久VIP, credits=充值次数
+    count: int = 1         # credits 模式下的次数
 
 
 @app.post("/api/vip/grant")
 async def vip_grant(req: VipGrantRequest, user: dict = Depends(get_current_user)) -> dict:
-    """管理员手动为用户开通 VIP（自愿捐款后人工开通）。"""
+    """管理员手动开通（永久 VIP / 充值次数），捐款后人工操作。"""
     if not user.get("is_admin"):
         raise HTTPException(status_code=403, detail="仅管理员可操作")
-    ok = vip.grant_vip(req.email, req.days)
+    if req.mode == "credits":
+        ok = vip.grant_credits(req.email, req.count)
+        detail = f"已为 {req.email} 充值 {req.count} 次解析次数"
+    else:
+        ok = vip.grant_vip(req.email)
+        detail = f"已为 {req.email} 开通永久 VIP"
     if not ok:
         raise HTTPException(status_code=404, detail="用户不存在")
-    return {"ok": True, "email": req.email, "days": req.days}
+    return {"ok": True, "detail": detail}
 
 
 @app.get("/api/vip/mock-pay")
@@ -203,6 +209,37 @@ async def vip_payjs_notify(request: Request) -> str:
     if form.get("return_code") == "1" and form.get("out_trade_no"):
         vip.mark_paid(form["out_trade_no"])
     return "success"
+
+
+# ---------------- 次数计费（非 VIP 每解析一题 0.1 元） ----------------
+
+PRICE_PER_PROBLEM = 0.1  # 元/题
+
+def _consume_credit(user_id: int) -> bool:
+    """扣除 1 次解析次数（原子操作，次数不足返回 False）。"""
+    n = query("UPDATE users SET credits = credits - 1 WHERE id = %s AND credits > 0", (user_id,))
+    return bool(n)
+
+
+def _consume_credits(user_id: int, count: int) -> bool:
+    """扣除 count 次解析次数（原子操作，不足返回 False）。"""
+    n = query(
+        "UPDATE users SET credits = credits - %s WHERE id = %s AND credits >= %s",
+        (count, user_id, count),
+    )
+    return bool(n)
+
+
+def check_generation_quota(user: dict, count: int = 1) -> None:
+    """生成前校验配额：VIP 免费；非 VIP 需要足够次数。不足抛 403。"""
+    row = auth.get_user_row(user["id"])
+    if auth.is_vip(row):
+        return
+    if not _consume_credits(user["id"], count):
+        raise HTTPException(
+            status_code=403,
+            detail=f"余额不足：解析每道题 {PRICE_PER_PROBLEM} 元，本次需要 {count} 次，请找管理员充值次数或开通永久 VIP",
+        )
 
 
 # ---------------- 生成任务（后台执行，前端轮询进度） ----------------
@@ -258,11 +295,13 @@ def _worker(user_id: int, job_id: str, url: str) -> None:
 
 
 @app.post("/api/generate")
-async def generate(req: GenerateRequest, user: dict = Depends(require_vip)) -> dict:
+async def generate(req: GenerateRequest, user: dict = Depends(get_current_user)) -> dict:
     url = (req.url or "").strip()
     slug = extract_slug(url)
     if not slug:
         raise HTTPException(status_code=400, detail="无法解析题目链接，请检查格式（需包含 /problems/ 路径）")
+    # 计费：VIP 免费，非 VIP 扣 1 次（0.1 元/题）
+    check_generation_quota(user, 1)
 
     job_id = uuid.uuid4().hex
     with _job_lock:
@@ -337,7 +376,7 @@ class BatchStartRequest(BaseModel):
 
 
 @app.post("/api/batch/start")
-async def batch_start(req: BatchStartRequest, user: dict = Depends(require_vip)) -> dict:
+async def batch_start(req: BatchStartRequest, user: dict = Depends(get_current_user)) -> dict:
     global _batch_thread
     with _batch_lock:
         if _batch["status"] == "running":
@@ -359,6 +398,8 @@ async def batch_start(req: BatchStartRequest, user: dict = Depends(require_vip))
             queue.append({"url": url, "slug": slug, "group": (req.group or "").strip(), "user_id": user["id"]})
         if not queue:
             raise HTTPException(status_code=400, detail="没有有效的题目链接（需包含 /problems/ 路径）")
+        # 计费：VIP 免费，非 VIP 按题数扣次数（0.1 元/题）
+        check_generation_quota(user, len(queue))
         _batch.update(
             status="running", queue=queue, total=len(queue), done=0, failed=0,
             current=None, message="批量生成进行中…",

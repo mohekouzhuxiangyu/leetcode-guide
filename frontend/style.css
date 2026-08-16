@@ -1172,3 +1172,17 @@ mark {
 }
 .donate-qr-missing { font-size: 12px; color: var(--text-dim); padding: 60px 0; }
 .donate-tip { font-size: 12px !important; color: var(--text-dim); }
+
+/* 剩余次数徽章 */
+.credits-badge {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(79, 140, 255, 0.15);
+  color: var(--accent-hover);
+  border: 1px solid rgba(79, 140, 255, 0.4);
+  vertical-align: middle;
+}
