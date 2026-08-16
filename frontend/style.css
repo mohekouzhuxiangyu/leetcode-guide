@@ -1250,3 +1250,17 @@ mark {
 .usage-table th, .usage-table td { border: 1px solid var(--border); padding: 4px 8px; text-align: left; }
 .usage-table th { background: var(--bg-input); }
 #grant-usage-list { max-height: 40vh; overflow-y: auto; margin-top: 8px; }
+
+/* 自定义金额输入框 */
+.donate-input {
+  flex: 1;
+  min-width: 140px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 14px;
+  padding: 8px 12px;
+  outline: none;
+}
+.donate-input:focus { border-color: var(--accent); }

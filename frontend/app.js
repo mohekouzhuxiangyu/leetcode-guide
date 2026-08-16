@@ -237,26 +237,29 @@ function openVipPanel() {
   chipsEl.innerHTML = amounts
     .map((a) => `<button class="donate-amt" data-amt="${a}">¥${a}</button>`)
     .join("");
-  const slider = $("donate-slider");
+  const input = $("donate-input");
   const valEl = $("donate-amount-val");
   const btnAmt = $("self-upgrade-amount");
-  const syncAmount = (v) => {
-    const s = (Math.round(parseFloat(v) * 10) / 10).toFixed(1);
+  const syncAmount = () => {
+    let v = parseFloat(input.value);
+    if (isNaN(v) || v < 1) v = 1;
+    const s = (Math.round(v * 10) / 10).toFixed(1);
     valEl.textContent = s;
     btnAmt.textContent = s;
   };
   chipsEl.querySelectorAll(".donate-amt").forEach((b) => {
     b.addEventListener("click", () => {
       chipsEl.querySelectorAll(".donate-amt").forEach((x) => x.classList.toggle("active", x === b));
-      slider.value = b.dataset.amt;
-      syncAmount(slider.value);
+      input.value = b.dataset.amt;
+      syncAmount();
     });
   });
-  slider.addEventListener("input", () => {
+  input.addEventListener("input", () => {
     chipsEl.querySelectorAll(".donate-amt").forEach((x) => x.classList.remove("active"));
-    syncAmount(slider.value);
+    syncAmount();
   });
-  syncAmount(slider.value);
+  input.value = "6.5";
+  syncAmount();
   hide($("input-panel"));
   hide($("progress-panel"));
   hide($("result-panel"));
