@@ -1013,18 +1013,18 @@ function renderWalkthroughTab(raw) {
   }
   container.innerHTML = `
     <div class="wt-tip">🎬 逐步动画：点击「下一步」观察指针滑动与格子变化，或自动播放</div>
-    <div class="wt-board">
-      <div class="wt-title" id="wt-title"></div>
-      <div class="wt-visual" id="wt-visual"></div>
-      <div class="wt-note" id="wt-note"></div>
-    </div>
     <div class="wt-controls">
       <button class="btn btn-small" id="wt-prev">◀ 上一步</button>
       <span class="wt-counter" id="wt-counter"></span>
       <button class="btn btn-small" id="wt-next">下一步 ▶</button>
-      <button class="btn btn-small" id="wt-play">▶ 自动播放</button>
+      <button class="btn btn-small btn-start" id="wt-play">▶ 自动播放</button>
     </div>
-    <div class="wt-dots" id="wt-dots"></div>`;
+    <div class="wt-dots" id="wt-dots"></div>
+    <div class="wt-board">
+      <div class="wt-title" id="wt-title"></div>
+      <div class="wt-visual" id="wt-visual"></div>
+      <div class="wt-note" id="wt-note"></div>
+    </div>`;
   $("wt-prev").addEventListener("click", () => wtStep(-1));
   $("wt-next").addEventListener("click", () => wtStep(1));
   $("wt-play").addEventListener("click", wtTogglePlay);
@@ -1376,6 +1376,11 @@ function bindNoteEditor() {
 
 /* VIP 页面：自助开通绑定 */
 function bindVipPanel() {
+  // 不想捐赠：返回继续免费使用
+  $("btn-donate-skip").addEventListener("click", () => {
+    showInputOnly();
+    toast("好的，继续免费浏览 hot100 👌");
+  });
   $("btn-self-upgrade").addEventListener("click", async () => {
     if (!auth.user) { showLoginModal(); return; }
     const amount = parseFloat($("donate-amount-val").textContent) || 1;

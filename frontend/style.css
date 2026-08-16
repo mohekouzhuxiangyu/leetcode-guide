@@ -1264,3 +1264,7 @@ mark {
   outline: none;
 }
 .donate-input:focus { border-color: var(--accent); }
+
+/* VIP 页捐赠操作按钮（我已捐赠 / 我不想捐赠） */
+.donate-actions { display: flex; gap: 10px; margin-top: 14px; }
+.donate-actions .btn { flex: 1; }
