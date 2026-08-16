@@ -865,13 +865,14 @@ function filterHistoryItems(items) {
 
 function makeHistoryItem(item) {
   const li = document.createElement("li");
-  li.className = "history-item";
+  li.className = "history-item diff-" + item.difficulty;
   li.dataset.slug = item.slug;
   const linkUrl = item.url || "https://leetcode.com/problems/" + item.slug + "/";
   li.innerHTML = `
     <div class="h-title">${highlightTitle(item.title, state.searchQuery.trim())}</div>
     <div class="h-meta">
-      <span>${DIFF_ZH[item.difficulty] || item.difficulty} · ${escapeHtml((item.updated_at || "").slice(0, 16))}</span>
+      <span class="h-diff ${item.difficulty}">${DIFF_ZH[item.difficulty] || item.difficulty}</span>
+      <span class="h-date">${escapeHtml((item.updated_at || "").slice(0, 16))}</span>
       <span class="h-actions">
         <a class="h-link" href="${escapeHtml(linkUrl)}" target="_blank" rel="noopener" title="打开力扣原题">🔗 原题</a>
         <button class="h-del" title="删除记录">🗑</button>

@@ -86,7 +86,12 @@ body {
   gap: 4px;
   transition: border-color 0.15s;
 }
-.history-item:hover { border-color: var(--accent); }
+/* 难度颜色状态：左侧色条 + 彩色难度徽章 */
+.history-item.diff-Easy { border-left: 4px solid #16a34a; }
+.history-item.diff-Medium { border-left: 4px solid #d97706; }
+.history-item.diff-Hard { border-left: 4px solid #dc2626; }
+.history-item.diff-Unknown { border-left: 4px solid #64748b; }
+.history-item:hover { border-color: var(--accent); border-left-color: var(--accent); }
 .history-item.active { border-color: var(--accent); background: rgba(79, 140, 255, 0.12); }
 .history-item.active .h-title { color: var(--accent-hover); }
 .history-item .h-title {
@@ -103,6 +108,21 @@ body {
   font-size: 11px;
   color: var(--text-dim);
 }
+/* 难度彩色徽章 */
+.h-diff {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 8px;
+  border-radius: 999px;
+  color: #fff;
+  flex: 0 0 auto;
+  line-height: 1.5;
+}
+.h-diff.Easy { background: #16a34a; }
+.h-diff.Medium { background: #d97706; }
+.h-diff.Hard { background: #dc2626; }
+.h-diff.Unknown { background: #64748b; }
+.h-date { font-size: 11px; color: var(--text-dim); margin-right: auto; padding-left: 6px; }
 .history-item .h-del {
   background: none;
   border: none;
