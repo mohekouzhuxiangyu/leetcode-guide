@@ -211,9 +211,10 @@ async def vip_payjs_notify(request: Request) -> str:
     return "success"
 
 
-# ---------------- 次数计费（非 VIP 每解析一题 0.1 元） ----------------
+# ---------------- 计费（普通 1 元/题，VIP 0.1 元/题；1 次 = 0.1 元） ----------------
 
-PRICE_PER_PROBLEM = 0.1  # 元/题
+CREDIT_PER_REGULAR = 10  # 普通用户 1 元/题 = 10 次
+CREDIT_PER_VIP = 1       # VIP 0.1 元/题 = 1 次
 
 def _consume_credit(user_id: int) -> bool:
     """扣除 1 次解析次数（原子操作，次数不足返回 False）。"""
@@ -231,14 +232,16 @@ def _consume_credits(user_id: int, count: int) -> bool:
 
 
 def check_generation_quota(user: dict, count: int = 1) -> None:
-    """生成前校验配额：VIP 免费；非 VIP 需要足够次数。不足抛 403。"""
+    """生成前校验配额：普通 10 次/题（1 元），VIP 1 次/题（0.1 元）。不足抛 403。"""
     row = auth.get_user_row(user["id"])
-    if auth.is_vip(row):
-        return
-    if not _consume_credits(user["id"], count):
+    is_vip = auth.is_vip(row)
+    cost_per = CREDIT_PER_VIP if is_vip else CREDIT_PER_REGULAR
+    total = cost_per * count
+    if not _consume_credits(user["id"], total):
+        price = "VIP 每道题 0.1 元" if is_vip else "普通用户每道题 1 元"
         raise HTTPException(
             status_code=403,
-            detail=f"余额不足：解析每道题 {PRICE_PER_PROBLEM} 元，本次需要 {count} 次，请找管理员充值次数或开通永久 VIP",
+            detail=f"余额不足：{price}，本次共需 ¥{total / 10:.1f}，请充值次数或升级 VIP",
         )
 
 
@@ -300,7 +303,7 @@ async def generate(req: GenerateRequest, user: dict = Depends(get_current_user))
     slug = extract_slug(url)
     if not slug:
         raise HTTPException(status_code=400, detail="无法解析题目链接，请检查格式（需包含 /problems/ 路径）")
-    # 计费：VIP 免费，非 VIP 扣 1 次（0.1 元/题）
+    # 计费：普通 1 元/题，VIP 0.1 元/题
     check_generation_quota(user, 1)
 
     job_id = uuid.uuid4().hex
@@ -398,7 +401,7 @@ async def batch_start(req: BatchStartRequest, user: dict = Depends(get_current_u
             queue.append({"url": url, "slug": slug, "group": (req.group or "").strip(), "user_id": user["id"]})
         if not queue:
             raise HTTPException(status_code=400, detail="没有有效的题目链接（需包含 /problems/ 路径）")
-        # 计费：VIP 免费，非 VIP 按题数扣次数（0.1 元/题）
+        # 计费：普通 1 元/题，VIP 0.1 元/题，按题数扣
         check_generation_quota(user, len(queue))
         _batch.update(
             status="running", queue=queue, total=len(queue), done=0, failed=0,

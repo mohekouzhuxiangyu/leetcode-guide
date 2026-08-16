@@ -183,12 +183,12 @@ function renderUserArea() {
     if (auth.user) {
       const vipHtml = isVip()
         ? `<span class="vip-badge">👑 VIP</span>`
-        : `<span class="credits-badge" title="每解析一题消耗 1 次（0.1 元/题）">🎫 ${auth.user.credits || 0}次</span>`;
-      const supportHtml = isVip() ? "" : `<button class="ua-action vip-buy" id="ua-vip">💖 支持</button>`;
+        : `<button class="ua-action vip-buy" id="ua-vip">💖 升级 VIP</button>`;
+      const creditsHtml = `<span class="credits-badge" title="${isVip() ? "VIP 每道题 0.1 元" : "普通用户每道题 1 元"}（1 次=0.1 元）">🎫 ${auth.user.credits || 0}次</span>`;
       const adminHtml = auth.user.is_admin ? `<button class="ua-action" id="ua-admin">👑 管理</button>` : "";
       el.innerHTML = `<div class="ua-inner">
         <span class="ua-name">👤 ${escapeHtml(auth.user.username)} ${vipHtml}</span>
-        <span>${supportHtml}${adminHtml}<button class="ua-action" id="ua-logout">退出</button></span>
+        <span>${creditsHtml}${adminHtml}<button class="ua-action" id="ua-logout">退出</button></span>
       </div>`;
     } else {
       el.innerHTML = `<div class="ua-inner">
@@ -206,13 +206,14 @@ function renderUserArea() {
   document.querySelectorAll(".ua-admin").forEach((b) => b.addEventListener("click", showGrantModal));
 }
 
-/* 💖 自愿捐款（微信/支付宝收款码 + 固定/自定义金额） */
+/* 💖 升级 VIP / 支持（微信/支付宝收款码，最低 1 元） */
 function showDonateModal() {
-  const amounts = [6.66, 9.9, 18.8, 66];
-  let body = `<div class="modal-msg">本应用为免费学习工具，欢迎自愿打赏支持开发 💖</div>
+  const amounts = [1, 6.6, 9.9, 18.8, 66];
+  let body = `<div class="modal-msg">📊 计费说明：<b>普通用户每道题 1 元</b>，<b>VIP 每道题 0.1 元</b>；1 次 = 0.1 元。</div>
+    <div class="modal-msg">👑 升级 VIP：扫码捐赠，<b>最低 1 元</b>、最高不限，联系管理员开通永久 VIP（不含次数，生成仍按 0.1 元/题扣次）。</div>
     <div class="donate-amounts">
       ${amounts.map((a) => `<button class="donate-amt" data-amt="${a}">¥${a}</button>`).join("")}
-      <input class="donate-custom" id="donate-custom" type="number" min="0.01" step="0.01" placeholder="自定义金额 ¥" />
+      <input class="donate-custom" id="donate-custom" type="number" min="1" step="0.01" placeholder="自定义金额(≥1元) ¥" />
     </div>
     <div class="donate-qrs">
       <div class="donate-qr">
@@ -228,9 +229,8 @@ function showDonateModal() {
         <div class="donate-qr-missing hidden" id="qr-alipay-missing">管理员尚未上传收款码</div>
       </div>
     </div>
-    <div class="modal-msg donate-tip">💡 解析每道题消耗 <b>1 次</b>（0.1 元/题），开通 <b>永久 VIP</b> 后不限次数。
-      打赏后请备注用户名，联系管理员充值次数或开通 VIP。</div>`;
-  openModal("💖 自愿捐款", body, `<button class="btn btn-small" id="modal-cancel">关闭</button>`);
+    <div class="modal-msg donate-tip">💡 打赏后请在<b>备注中写明你的用户名</b>，联系管理员开通 VIP 或充值次数（1 元 = 10 次）。</div>`;
+  openModal("💖 升级 VIP / 支持", body, `<button class="btn btn-small" id="modal-cancel">关闭</button>`);
   $("modal-cancel").addEventListener("click", closeModal);
   document.querySelectorAll(".donate-amt").forEach((b) => {
     b.addEventListener("click", () => {
@@ -259,10 +259,10 @@ function showGrantModal() {
        <input id="grant-email" class="modal-input" type="email" spellcheck="false" placeholder="donor@example.com" />
        <label class="modal-label">操作</label>
        <select id="grant-mode" class="modal-input">
-         <option value="vip">开通永久 VIP（不限次数）</option>
-         <option value="credits">充值解析次数（0.1 元/次）</option>
+         <option value="vip">开通永久 VIP（生成仍按 0.1 元/题扣次）</option>
+         <option value="credits">充值次数（1 元 = 10 次）</option>
        </select>
-       <label class="modal-label" id="grant-count-label">充值次数</label>
+       <label class="modal-label" id="grant-count-label">充值金额（元）</label>
        <input id="grant-count" class="modal-input" type="number" value="10" min="1" step="1" />
      </div>`,
     `<button class="btn btn-small" id="modal-cancel">取消</button>
@@ -273,7 +273,7 @@ function showGrantModal() {
   const countInput = $("grant-count");
   const syncMode = () => {
     const isCredits = modeSel.value === "credits";
-    countLabel.textContent = isCredits ? "充值次数（0.1 元/次）" : "（永久 VIP 无需次数）";
+    countLabel.textContent = isCredits ? "充值金额（元，1 元 = 10 次）" : "（永久 VIP 无需次数）";
     countInput.disabled = !isCredits;
   };
   syncMode();
@@ -282,9 +282,10 @@ function showGrantModal() {
   $("modal-ok").addEventListener("click", async () => {
     const email = $("grant-email").value.trim();
     const mode = modeSel.value;
-    const count = parseInt($("grant-count").value, 10) || 10;
+    const yuan = parseFloat($("grant-count").value) || 10;
     if (!email) { modalError("请输入用户邮箱"); return; }
     try {
+      const count = mode === "credits" ? Math.round(yuan * 10) : 1; // 1元=10次
       const resp = await apiFetch("/api/vip/grant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
