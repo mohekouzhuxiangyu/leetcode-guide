@@ -511,6 +511,32 @@ function sanitizeMermaid(code) {
   return out.join("\n");
 }
 
+/* 流程图缩放状态 */
+const mz = { scale: 1, baseW: 0, baseH: 0 };
+
+function mermaidApplyZoom() {
+  const svg = document.querySelector("#mz-stage svg");
+  const pct = $("mz-pct");
+  if (!svg) return;
+  svg.style.width = Math.round(mz.baseW * mz.scale) + "px";
+  svg.style.height = Math.round(mz.baseH * mz.scale) + "px";
+  if (pct) pct.textContent = Math.round(mz.scale * 100) + "%";
+}
+
+function mermaidFit() {
+  const svg = document.querySelector("#mz-stage svg");
+  const container = $("mermaid-container");
+  if (!svg || !container) return;
+  const w = svg.viewBox && svg.viewBox.baseVal ? svg.viewBox.baseVal.width : parseFloat(svg.getAttribute("width")) || 800;
+  const h = svg.viewBox && svg.viewBox.baseVal ? svg.viewBox.baseVal.height : parseFloat(svg.getAttribute("height")) || 600;
+  mz.baseW = w;
+  mz.baseH = h;
+  const availW = Math.max(container.clientWidth - 48, 200);
+  const availH = Math.min(window.innerHeight * 0.6, 520);
+  mz.scale = Math.min(availW / w, availH / h, 1);
+  mermaidApplyZoom();
+}
+
 async function renderMermaidGraph(container, code) {
   if (typeof mermaid === "undefined") {
     container.innerHTML = `<div class="mermaid-error">流程图渲染库未加载，以下是 Mermaid 源码：</div><pre style="text-align:left;white-space:pre-wrap;">${escapeHtml(code)}</pre>`;
@@ -520,8 +546,11 @@ async function renderMermaidGraph(container, code) {
   const id = "mermaid-graph-" + mermaidSeq + "-" + Date.now();
   try {
     const { svg } = await mermaid.render(id, code);
-    container.innerHTML = svg;
-    container.querySelector("svg").style.maxWidth = "100%";
+    container.innerHTML = `<div class="mz-stage" id="mz-stage">${svg}</div>`;
+    const svgEl = container.querySelector("svg");
+    svgEl.style.maxWidth = "none"; // 允许放大超过容器，配合滚动
+    svgEl.style.display = "block";
+    mermaidFit();
   } catch (err) {
     container.innerHTML = `<div class="mermaid-error">流程图渲染失败：${escapeHtml(err.message)}<br/>可点击下方“查看 Mermaid 源码”复制内容。</div>`;
   }
@@ -1702,6 +1731,12 @@ function init() {
     e.target.textContent = ok ? "✅ 已复制" : "❌ 复制失败";
     setTimeout(() => { e.target.textContent = "📋 复制 Mermaid 源码"; }, 1500);
   });
+
+  // 流程图缩放控制
+  $("mz-in").addEventListener("click", () => { mz.scale = Math.min(4, mz.scale * 1.25); mermaidApplyZoom(); });
+  $("mz-out").addEventListener("click", () => { mz.scale = Math.max(0.2, mz.scale / 1.25); mermaidApplyZoom(); });
+  $("mz-reset").addEventListener("click", () => { mz.scale = 1; mermaidApplyZoom(); });
+  $("mz-fit").addEventListener("click", mermaidFit);
 
   document.querySelectorAll(".tab").forEach((t) => {
     t.addEventListener("click", () => switchTab(t.dataset.tab));

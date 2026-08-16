@@ -1124,3 +1124,20 @@ mark {
   border: 1px solid var(--border);
   background: #fff;
 }
+
+/* ---------- 流程图缩放 ---------- */
+.mermaid-container { overflow: auto; }
+.mz-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: auto;
+}
+.mz-pct {
+  font-size: 12px;
+  color: var(--text-dim);
+  min-width: 48px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.mz-stage svg { display: block; margin: 0 auto; }
