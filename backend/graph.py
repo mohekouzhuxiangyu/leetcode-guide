@@ -19,6 +19,7 @@ class AgentState(TypedDict, total=False):
     slug: str
     title: str
     problem: dict
+    problem_zh: str
     analysis: str
     flowchart: str
     code: dict
@@ -58,9 +59,11 @@ FLOWCHART_PROMPT = """你是一位算法可视化专家。请为下面的力扣�
 
 要求：
 1. 使用 `flowchart TD` 语法，节点文字用中文，简洁准确（每个节点不超过 15 个字）。
-2. 用菱形节点表示判断（如 `是否满足条件{{...}}`），矩形表示操作，圆角矩形表示开始/结束。
+2. 用菱形节点表示判断（如 `是否满足条件{{"..."}}`），矩形表示操作，圆角矩形表示开始/结束。
 3. 必须包含：开始 → 初始化 → 主逻辑（含循环/分支）→ 返回结果 → 结束。
-4. 只输出 Mermaid 代码，放在 ```mermaid 代码块中，不要输出任何解释文字。
+4. 所有节点文本一律用双引号包裹，例如：`A["初始化哈希表"]`、`B{{"补数是否存在?"}}`、`C(["结束"])`。
+5. 节点文本中**不要**使用方括号 [ ]、圆括号 ( )、花括号 {{ }}、等号 =、尖括号 < > 等特殊符号（必要时用中文文字描述，例如用“下标i”代替 [i]）。
+6. 只输出 Mermaid 代码，放在 ```mermaid 代码块中，不要输出任何解释文字。
 """
 
 CODE_PROMPT = """你是一位严谨的算法工程师，为力扣题目生成可直接运行的题解代码。
@@ -95,6 +98,36 @@ CODE_PROMPT = """你是一位严谨的算法工程师，为力扣题目生成可
 """
 
 
+TRANSLATE_PROMPT = """你是一位专业翻译。请把下面的力扣（LeetCode）题目信息翻译成**简体中文**，
+并整理为清晰的结构化文本，严格按照以下格式输出（不要输出其他内容）：
+
+题目描述：
+（中文翻译的题目描述，保留数学符号与代码标识符原样）
+
+示例：
+示例 1：
+输入：...
+输出：...
+（解释：...，如有）
+
+示例 2：
+输入：...
+输出：...
+
+约束：
+- ...
+- ...
+
+题目原文（英文）：
+{content}
+
+注意：
+1. 输入/输出中的数组、变量名、函数名等代码标识符保持英文原样；
+2. 如果有“进阶/Follow up”说明，翻译后在末尾追加“进阶：...”小节；
+3. 如果原文没有示例或约束，就省略对应小节。
+"""
+
+
 def _call_llm(llm, prompt: str) -> str:
     """调用 LLM，失败时重试一次。"""
     try:
@@ -116,6 +149,102 @@ def _extract_mermaid(text: str) -> str:
     if blocks:
         return blocks[-1].strip()
     return text.strip()
+
+
+# ---------------- Mermaid 消毒 ----------------
+
+def _quote_mermaid_text(text: str) -> str:
+    """给节点文本加双引号并转义内部引号；已加引号的保持不变。"""
+    text = text.strip()
+    if len(text) >= 2 and text.startswith('"') and text.endswith('"'):
+        return text
+    return '"' + text.replace('"', '#quot;') + '"'
+
+
+def _find_matching(s: str, start: int, open_ch: str, close_ch: str) -> int:
+    """从 start 起找到与 open_ch 配对的 close_ch 下标（支持嵌套）。"""
+    depth = 0
+    for idx in range(start, len(s)):
+        if s[idx] == open_ch:
+            depth += 1
+        elif s[idx] == close_ch:
+            depth -= 1
+            if depth == 0:
+                return idx
+    return -1
+
+
+def _quote_node_texts(line: str) -> str:
+    """把行内所有节点定义（ID[...] ID{...} ID((...)) ID([...]) ID>...]）的文本加引号。"""
+    out: list[str] = []
+    i, n = 0, len(line)
+    while i < n:
+        ch = line[i]
+        if ch.isascii() and (ch.isalnum() or ch == "_"):
+            j = i
+            while j < n and line[j].isascii() and (line[j].isalnum() or line[j] == "_"):
+                j += 1
+            ident = line[i:j]
+            k = j
+            while k < n and line[k] == " ":
+                k += 1
+            if k < n and line[k] in "[{(>":
+                shape = line[k]
+                if shape == "(":
+                    if k + 1 < n and line[k + 1] == "(":
+                        close = _find_matching(line, k + 1, "(", ")")
+                        if close != -1 and close + 1 < n and line[close + 1] == ")":
+                            out.append(f"{ident}(({_quote_mermaid_text(line[k+2:close])}))")
+                            i = close + 2
+                            continue
+                    elif k + 1 < n and line[k + 1] == "[":
+                        close = _find_matching(line, k + 1, "[", "]")
+                        if close != -1 and close + 1 < n and line[close + 1] == ")":
+                            out.append(f"{ident}([{_quote_mermaid_text(line[k+2:close])}])")
+                            i = close + 2
+                            continue
+                    else:
+                        close = _find_matching(line, k, "(", ")")
+                        if close != -1:
+                            out.append(f"{ident}({_quote_mermaid_text(line[k+1:close])})")
+                            i = close + 1
+                            continue
+                elif shape == "[":
+                    close = _find_matching(line, k, "[", "]")
+                    if close != -1:
+                        out.append(f"{ident}[{_quote_mermaid_text(line[k+1:close])}]")
+                        i = close + 1
+                        continue
+                elif shape == "{":
+                    close = _find_matching(line, k, "{", "}")
+                    if close != -1:
+                        out.append(f"{ident}{{{_quote_mermaid_text(line[k+1:close])}}}")
+                        i = close + 1
+                        continue
+                elif shape == ">":
+                    close = _find_matching(line, k, ">", "]")
+                    if close != -1:
+                        out.append(f"{ident}>{_quote_mermaid_text(line[k+1:close])}]")
+                        i = close + 1
+                        continue
+            out.append(ident)
+            i = j
+        else:
+            out.append(ch)
+            i += 1
+    return "".join(out)
+
+
+def sanitize_mermaid(code: str) -> str:
+    """清洗 LLM 生成的 Mermaid 代码：给所有节点文本加引号，避免特殊字符导致语法错误。"""
+    lines: list[str] = []
+    for raw in (code or "").splitlines():
+        line = raw.strip()
+        if not line or re.match(r"^(flowchart|graph|subgraph|end|style|classDef|class |%%|direction)\b", line):
+            lines.append(raw)
+            continue
+        lines.append(_quote_node_texts(line))
+    return "\n".join(lines)
 
 
 def _extract_code(text: str) -> dict:
@@ -158,6 +287,16 @@ def fetch_node(state: AgentState) -> dict:
     return {"problem": problem, "title": problem["title"]}
 
 
+def translate_node(state: AgentState, llm) -> dict:
+    """把抓取的英文题目信息翻译整理成结构化中文（供“题目信息”标签页展示）。"""
+    problem = state.get("problem") or {}
+    content = problem.get("content_text") or ""
+    if not content:
+        return {"problem_zh": ""}
+    prompt = TRANSLATE_PROMPT.format(content=content)
+    return {"problem_zh": _call_llm(llm, prompt)}
+
+
 def analyze_node(state: AgentState, llm) -> dict:
     problem = state.get("problem") or {}
     content, note = _problem_context(state)
@@ -178,7 +317,8 @@ def flowchart_node(state: AgentState, llm) -> dict:
         difficulty=(state.get("problem") or {}).get("difficulty", "未知"),
         analysis=state.get("analysis", "（暂无解析）"),
     )
-    return {"flowchart": _extract_mermaid(_call_llm(llm, prompt))}
+    raw = _call_llm(llm, prompt)
+    return {"flowchart": sanitize_mermaid(_extract_mermaid(raw))}
 
 
 def code_node(state: AgentState, llm) -> dict:
@@ -210,11 +350,13 @@ def run_pipeline(url: str, set_stage: Optional[StageCallback] = None) -> dict:
 
     builder = StateGraph(AgentState)
     builder.add_node("fetch", fetch_node)
+    builder.add_node("translate", lambda s: translate_node(s, llm))
     builder.add_node("analyze", lambda s: analyze_node(s, llm))
     builder.add_node("flowchart", lambda s: flowchart_node(s, llm))
     builder.add_node("code", lambda s: code_node(s, llm))
     builder.set_entry_point("fetch")
-    builder.add_edge("fetch", "analyze")
+    builder.add_edge("fetch", "translate")
+    builder.add_edge("translate", "analyze")
     builder.add_edge("analyze", "flowchart")
     builder.add_edge("flowchart", "code")
     builder.add_edge("code", END)
@@ -233,6 +375,8 @@ def run_pipeline(url: str, set_stage: Optional[StageCallback] = None) -> dict:
                 if isinstance(update, dict):
                     final_state.update(update)
                 if node_name == "fetch":
+                    stage("translate", "正在翻译整理中文题目信息…")
+                elif node_name == "translate":
                     stage("analyze", "算法分析 agent 正在撰写解析…")
                 elif node_name == "analyze":
                     stage("flowchart", "流程图 agent 正在绘制算法流程…")
@@ -253,6 +397,7 @@ def run_pipeline(url: str, set_stage: Optional[StageCallback] = None) -> dict:
         "slug": slug,
         "title": final_state.get("title") or problem["title"],
         "problem": problem,
+        "problem_zh": final_state.get("problem_zh", ""),
         "analysis": final_state.get("analysis", ""),
         "flowchart": final_state.get("flowchart", ""),
         "code": final_state.get("code", {}),

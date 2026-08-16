@@ -2,7 +2,8 @@
 "use strict";
 
 const $ = (id) => document.getElementById(id);
-const STAGES = ["fetch", "analyze", "flowchart", "code", "done"];
+const STAGES = ["fetch", "translate", "analyze", "flowchart", "code", "done"];
+const DIFF_ZH = { Easy: "简单", Medium: "中等", Hard: "困难", Unknown: "未知" };
 const LANG_ALIAS = {
   Python3: { label: "🐍 Python3", hl: "python" },
   Java: { label: "☕ Java", hl: "java" },
@@ -13,6 +14,13 @@ let currentJobId = null;
 let currentSlug = null;
 let pollTimer = null;
 let mermaidSeq = 0;
+
+/* 会话状态：当前记录缓存 + 各标签页懒渲染标记（历史切换卡顿的主因是每次都重渲染流程图） */
+const state = {
+  record: null,
+  renderedTabs: {},
+  cache: {},
+};
 
 /* ---------- 工具函数 ---------- */
 
@@ -60,6 +68,114 @@ function renderMarkdown(text) {
   }
   return `<pre style="white-space:pre-wrap;word-break:break-word;">${escapeHtml(text)}</pre>`;
 }
+
+/* ---------- Mermaid 消毒（与后端 sanitize_mermaid 逻辑一致） ----------
+   LLM 生成的节点文本常含 [ ] = < > 等特殊字符导致 "Syntax error in text"，
+   这里统一给所有节点文本加双引号并转义。 */
+
+function quoteMermaidText(text) {
+  text = text.trim();
+  if (text.length >= 2 && text.startsWith('"') && text.endsWith('"')) return text;
+  return '"' + text.replace(/"/g, "#quot;") + '"';
+}
+
+function findMatching(s, start, openCh, closeCh) {
+  let depth = 0;
+  for (let idx = start; idx < s.length; idx++) {
+    if (s[idx] === openCh) depth++;
+    else if (s[idx] === closeCh) {
+      depth--;
+      if (depth === 0) return idx;
+    }
+  }
+  return -1;
+}
+
+function quoteNodeTexts(line) {
+  let out = "";
+  let i = 0;
+  const n = line.length;
+  while (i < n) {
+    const ch = line[i];
+    if (/[A-Za-z0-9_]/.test(ch)) {
+      let j = i;
+      while (j < n && /[A-Za-z0-9_]/.test(line[j])) j++;
+      const ident = line.slice(i, j);
+      let k = j;
+      while (k < n && line[k] === " ") k++;
+      if (k < n && "[{(>".includes(line[k])) {
+        const shape = line[k];
+        if (shape === "(") {
+          if (k + 1 < n && line[k + 1] === "(") {
+            const close = findMatching(line, k + 1, "(", ")");
+            if (close !== -1 && close + 1 < n && line[close + 1] === ")") {
+              out += ident + "((" + quoteMermaidText(line.slice(k + 2, close)) + "))";
+              i = close + 2;
+              continue;
+            }
+          } else if (k + 1 < n && line[k + 1] === "[") {
+            const close = findMatching(line, k + 1, "[", "]");
+            if (close !== -1 && close + 1 < n && line[close + 1] === ")") {
+              out += ident + "([" + quoteMermaidText(line.slice(k + 2, close)) + "])";
+              i = close + 2;
+              continue;
+            }
+          } else {
+            const close = findMatching(line, k, "(", ")");
+            if (close !== -1) {
+              out += ident + "(" + quoteMermaidText(line.slice(k + 1, close)) + ")";
+              i = close + 1;
+              continue;
+            }
+          }
+        } else if (shape === "[") {
+          const close = findMatching(line, k, "[", "]");
+          if (close !== -1) {
+            out += ident + "[" + quoteMermaidText(line.slice(k + 1, close)) + "]";
+            i = close + 1;
+            continue;
+          }
+        } else if (shape === "{") {
+          const close = findMatching(line, k, "{", "}");
+          if (close !== -1) {
+            out += ident + "{" + quoteMermaidText(line.slice(k + 1, close)) + "}";
+            i = close + 1;
+            continue;
+          }
+        } else if (shape === ">") {
+          const close = findMatching(line, k, ">", "]");
+          if (close !== -1) {
+            out += ident + ">" + quoteMermaidText(line.slice(k + 1, close)) + "]";
+            i = close + 1;
+            continue;
+          }
+        }
+      }
+      out += ident;
+      i = j;
+    } else {
+      out += ch;
+      i++;
+    }
+  }
+  return out;
+}
+
+function sanitizeMermaid(code) {
+  const lines = String(code || "").split("\n");
+  const out = [];
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line || /^(flowchart|graph|subgraph|end|style|classDef|class |%%|direction)\b/.test(line)) {
+      out.push(raw);
+      continue;
+    }
+    out.push(quoteNodeTexts(line));
+  }
+  return out.join("\n");
+}
+
+/* ---------- 流程图渲染（带消毒与降级） ---------- */
 
 async function renderMermaidGraph(container, code) {
   if (typeof mermaid === "undefined") {
@@ -182,16 +298,63 @@ async function pollJob() {
   }
 }
 
-/* ---------- 结果渲染 ---------- */
+/* ---------- 题目信息分节解析 ---------- */
+
+function parseProblemSections(text) {
+  const lines = text.split("\n");
+  const description = [];
+  const examples = [];
+  const constraints = [];
+  let mode = "desc";
+  let cur = null;
+  for (const ln of lines) {
+    const t = ln.trim();
+    const exM = t.match(/^(示例|Example)\s*(\d*)\s*[:：]?\s*(.*)$/);
+    const conM = t.match(/^(约束|提示|Constraints)\s*[:：]?(.*)$/);
+    if (t !== "```" && exM) {
+      // 裸的“示例：”标题行跳过；带编号或内容的行才开始新示例
+      if (exM[2] !== "" || exM[3].trim() !== "") {
+        mode = "ex";
+        cur = { title: t, body: [] };
+        examples.push(cur);
+      }
+      continue;
+    }
+    if (t !== "```" && conM) {
+      mode = "con";
+      // 裸的“约束：”标题行跳过，只保留约束条目
+      if (conM[2].trim() !== "") constraints.push(ln);
+      continue;
+    }
+    if (mode === "desc") description.push(ln);
+    else if (mode === "ex" && cur) cur.body.push(ln);
+    else constraints.push(ln);
+  }
+  for (const ex of examples) {
+    let b = ex.body.join("\n").trim();
+    b = b.replace(/^```\w*\s*\n?/, "").replace(/\n?```$/, "");
+    ex.body = b;
+  }
+  return {
+    description: description.join("\n").trim(),
+    examples,
+    constraints: constraints.join("\n").trim(),
+  };
+}
+
+/* ---------- 结果渲染（懒渲染 + 缓存） ---------- */
 
 function renderResult(record) {
   currentSlug = record.slug;
+  state.record = record;
+  state.renderedTabs = {};
+  state.cache[record.slug] = record;
   window.__codeMap = record.code || {};
   const problem = record.problem || {};
 
   $("result-title").textContent = `${problem.title || record.title || record.slug} #${problem.id || ""}`;
   const diff = $("result-difficulty");
-  diff.textContent = problem.difficulty || "Unknown";
+  diff.textContent = DIFF_ZH[problem.difficulty] || problem.difficulty || "未知";
   diff.className = "badge " + (problem.difficulty || "Unknown");
 
   const tagRow = $("result-tags");
@@ -210,11 +373,11 @@ function renderResult(record) {
   const timeText = record.updated_at || record.created_at || new Date().toLocaleString();
   $("result-time").textContent = `生成于 ${timeText} ${note}`;
 
+  // 只立即渲染题目信息页；算法解析 / 流程图 / 代码首次打开对应标签页时才渲染
   renderProblemTab(problem, record);
-  renderAnalysisTab(record.analysis);
-  renderFlowchartTab(record.flowchart);
-  renderCodeTab(record.code);
+  state.renderedTabs.problem = true;
 
+  setActiveHistory(record.slug);
   switchTab("problem");
 }
 
@@ -222,14 +385,42 @@ function renderProblemTab(problem, record) {
   const el = $("tab-problem");
   const content = (problem.content_text || "").trim();
   const snippets = problem.code_snippets || {};
+  // 优先展示 agent 生成的结构化中文题目信息
+  const zh = (record.problem_zh || "").trim();
   let html = "";
-  if (content) {
-    html += `<div>${escapeHtml(content)}</div>`;
+  if (zh) {
+    const { description, examples, constraints } = parseProblemSections(zh);
+    if (description) html += `<div class="problem-desc">${escapeHtml(description)}</div>`;
+    if (examples.length) {
+      html += `<h3 class="sec-title">📌 示例</h3>`;
+      for (const ex of examples) {
+        html += `<div class="problem-example"><div class="example-title">${escapeHtml(ex.title)}</div>`;
+        if (ex.body) html += `<pre>${escapeHtml(ex.body)}</pre>`;
+        html += `</div>`;
+      }
+    }
+    if (constraints) {
+      html += `<h3 class="sec-title">⚠️ 约束</h3><div class="problem-constraints">${escapeHtml(constraints)}</div>`;
+    }
+  } else if (content) {
+    const { description, examples, constraints } = parseProblemSections(content);
+    if (description) html += `<div class="problem-desc">${escapeHtml(description)}</div>`;
+    if (examples.length) {
+      html += `<h3 class="sec-title">📌 示例</h3>`;
+      for (const ex of examples) {
+        html += `<div class="problem-example"><div class="example-title">${escapeHtml(ex.title)}</div>`;
+        if (ex.body) html += `<pre>${escapeHtml(ex.body)}</pre>`;
+        html += `</div>`;
+      }
+    }
+    if (constraints) {
+      html += `<h3 class="sec-title">⚠️ 约束</h3><div class="problem-constraints">${escapeHtml(constraints)}</div>`;
+    }
   } else {
     html += `<div class="problem-empty">（未获取到题目原文，请查看算法解析或<a href="${escapeHtml(problem.url || record.url || "#")}" target="_blank">原题链接</a>）</div>`;
   }
   if (Object.keys(snippets).length) {
-    html += `<h3 style="margin:18px 0 8px;color:var(--accent-hover);font-size:15px;">LeetCode 函数模板</h3>`;
+    html += `<h3 class="sec-title">🧩 LeetCode 函数模板</h3>`;
     for (const [lang, code] of Object.entries(snippets)) {
       html += `<div class="code-block"><pre><code class="language-${LANG_ALIAS[lang]?.hl || "text"}">${escapeHtml(code)}</code></pre></div>`;
     }
@@ -249,14 +440,14 @@ function renderAnalysisTab(analysis) {
 }
 
 function renderFlowchartTab(mermaidCode) {
-  const code = mermaidCode || "";
+  const code = sanitizeMermaid(mermaidCode || "");
   $("mermaid-source-pre").textContent = code;
   const container = $("mermaid-container");
-  container.innerHTML = "";
   if (!code.trim()) {
     container.innerHTML = `<div class="mermaid-error">流程图生成失败。</div>`;
     return;
   }
+  container.innerHTML = `<div class="mermaid-loading">⏳ 流程图渲染中…</div>`;
   renderMermaidGraph(container, code);
 }
 
@@ -304,7 +495,7 @@ function showCodeLang(lang) {
   });
 }
 
-/* ---------- 标签页切换 ---------- */
+/* ---------- 标签页切换（懒渲染） ---------- */
 
 function switchTab(name) {
   document.querySelectorAll(".tab").forEach((t) => {
@@ -313,9 +504,27 @@ function switchTab(name) {
   document.querySelectorAll(".tab-content").forEach((c) => {
     c.classList.toggle("hidden", c.id !== "tab-" + name);
   });
+  if (!state.renderedTabs[name] && state.record) {
+    if (name === "analysis") {
+      renderAnalysisTab(state.record.analysis);
+      state.renderedTabs[name] = true;
+    } else if (name === "flowchart") {
+      renderFlowchartTab(state.record.flowchart);
+      state.renderedTabs[name] = true;
+    } else if (name === "code") {
+      renderCodeTab(state.record.code);
+      state.renderedTabs[name] = true;
+    }
+  }
 }
 
 /* ---------- 历史记录 ---------- */
+
+function setActiveHistory(slug) {
+  document.querySelectorAll(".history-item").forEach((li) => {
+    li.classList.toggle("active", li.dataset.slug === slug);
+  });
+}
 
 async function loadHistory() {
   try {
@@ -331,10 +540,11 @@ async function loadHistory() {
     items.forEach((item) => {
       const li = document.createElement("li");
       li.className = "history-item";
+      li.dataset.slug = item.slug;
       li.innerHTML = `
         <div class="h-title">${escapeHtml(item.title)}</div>
         <div class="h-meta">
-          <span>${item.difficulty} · ${escapeHtml((item.updated_at || "").slice(0, 16))}</span>
+          <span>${DIFF_ZH[item.difficulty] || item.difficulty} · ${escapeHtml((item.updated_at || "").slice(0, 16))}</span>
           <button class="h-del" title="删除记录">🗑</button>
         </div>`;
       li.querySelector(".h-title").addEventListener("click", () => loadRecord(item.slug));
@@ -346,17 +556,24 @@ async function loadHistory() {
       });
       list.appendChild(li);
     });
+    if (currentSlug) setActiveHistory(currentSlug);
   } catch {
     /* 忽略历史加载失败 */
   }
 }
 
 async function loadRecord(slug) {
+  // 已缓存记录直接渲染，不再请求后端
+  if (state.cache[slug]) {
+    renderResult(state.cache[slug]);
+    showResult();
+    window.history.replaceState(null, "", "?slug=" + encodeURIComponent(slug));
+    return;
+  }
   try {
     const resp = await fetch("/api/history/" + encodeURIComponent(slug));
     if (!resp.ok) throw new Error("记录不存在");
     const record = await resp.json();
-    currentSlug = record.slug;
     renderResult(record);
     showResult();
     window.history.replaceState(null, "", "?slug=" + encodeURIComponent(slug));
@@ -418,7 +635,6 @@ function init() {
     });
   });
 
-  // 存储当前代码映射供语言切换使用
   loadHistory();
 
   // ?slug= 深链：直接加载历史记录

@@ -12,6 +12,8 @@ from typing import Optional
 import requests
 
 GRAPHQL_ENDPOINTS = [
+    # leetcode.com 优先：cn 站的 GraphQL 对无登录请求有 Cloudflare 拦截（403），
+    # 且匿名返回的内容是英文。中文题目信息由 agent 工作流中的“翻译节点”生成。
     "https://leetcode.com/graphql",
     "https://leetcode.cn/graphql",
 ]
@@ -22,6 +24,7 @@ HEADERS = {
         "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
     ),
     "Content-Type": "application/json",
+    "Accept": "application/json",
     "Referer": "https://leetcode.com/",
 }
 
@@ -52,30 +55,48 @@ def extract_slug(url: str) -> Optional[str]:
 
 
 class _HTMLToText(HTMLParser):
-    """把 LeetCode 题目的 HTML 内容转成接近 Markdown 的纯文本。"""
+    """把 LeetCode 题目的 HTML 内容转成接近 Markdown 的纯文本（更干净的格式）。
 
-    BLOCK_TAGS = {"p", "div", "br", "pre", "li", "tr", "h1", "h2", "h3", "h4", "table"}
-    HEAD_TAGS = {"h1", "h2", "h3", "h4"}
+    - 代码块（<pre>）原样保留在 ``` 围栏内
+    - 普通段落压缩多余空白，<sup>/<sub> 转为 ^ / _
+    - 列表项转为 "- " 前缀
+    """
+
+    BLOCK_TAGS = {"p", "div", "li", "tr", "ul", "ol", "table", "h1", "h2", "h3", "h4"}
 
     def __init__(self):
         super().__init__()
         self.parts: list[str] = []
         self._in_pre = False
 
+    def _newline(self):
+        if self.parts and not self.parts[-1].endswith("\n"):
+            self.parts.append("\n")
+
     def handle_starttag(self, tag, attrs):
         if tag == "pre":
             self._in_pre = True
-            self.parts.append("\n```\n")
+            self._newline()
+            self.parts.append("```\n")
+        elif tag == "br":
+            self._newline()
         elif tag == "li":
-            self.parts.append("\n- ")
-        elif tag in self.BLOCK_TAGS:
-            self.parts.append("\n")
+            self._newline()
+            self.parts.append("- ")
+        elif tag in ("h1", "h2", "h3", "h4"):
+            self._newline()
+        elif tag == "sup":
+            self.parts.append("^")
+        elif tag == "sub":
+            self.parts.append("_")
         elif tag == "strong":
             self.parts.append("**")
         elif tag == "em":
             self.parts.append("*")
         elif tag == "code" and not self._in_pre:
             self.parts.append("`")
+        elif tag in self.BLOCK_TAGS:
+            self._newline()
 
     def handle_endtag(self, tag):
         if tag == "pre":
@@ -88,7 +109,7 @@ class _HTMLToText(HTMLParser):
         elif tag == "code" and not self._in_pre:
             self.parts.append("`")
         elif tag in self.BLOCK_TAGS:
-            self.parts.append("\n")
+            self._newline()
 
     def handle_data(self, data):
         self.parts.append(data)
@@ -98,7 +119,18 @@ def html_to_text(html: str) -> str:
     parser = _HTMLToText()
     parser.feed(html or "")
     text = "".join(parser.parts)
-    # 压缩多余空行
+    # 逐行整理：代码块内保持原样，普通行压缩空白
+    out_lines: list[str] = []
+    in_code = False
+    for line in text.splitlines():
+        if line.strip() == "```":
+            in_code = not in_code
+            out_lines.append(line)
+        elif in_code:
+            out_lines.append(line.rstrip())
+        else:
+            out_lines.append(re.sub(r"[ \t]+", " ", line).strip())
+    text = "\n".join(out_lines)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
@@ -119,9 +151,9 @@ def fetch_problem(slug: str) -> Optional[dict]:
         for attempt in range(3):
             try:
                 q = _query_graphql(endpoint, slug)
-                if q is None:
-                    return None
-                return _normalize(q)
+                if q is not None:
+                    return _normalize(q)
+                break  # 该端点返回空题目，换下一个端点
             except Exception as exc:  # noqa: BLE001
                 last_err = exc
                 time.sleep(1.0 + attempt * 1.5)

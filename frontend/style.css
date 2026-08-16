@@ -84,6 +84,8 @@ body {
   transition: border-color 0.15s;
 }
 .history-item:hover { border-color: var(--accent); }
+.history-item.active { border-color: var(--accent); background: rgba(79, 140, 255, 0.12); }
+.history-item.active .h-title { color: var(--accent-hover); }
 .history-item .h-title {
   font-size: 13px;
   font-weight: 600;
@@ -108,12 +110,16 @@ body {
 }
 .history-item .h-del:hover { color: var(--red); }
 
-/* ---------- 主区域 ---------- */
+/* ---------- 主区域（宽度固定，避免内容变化时布局抖动） ---------- */
+html { overflow-y: scroll; }
+
 #main {
-  flex: 1;
-  padding: 32px 40px;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
   max-width: 1100px;
   margin: 0 auto;
+  padding: 32px 40px;
 }
 
 .panel {
@@ -122,6 +128,7 @@ body {
   border-radius: var(--radius);
   padding: 28px;
   margin-bottom: 20px;
+  min-width: 0;
 }
 
 .hidden { display: none !important; }
@@ -241,11 +248,31 @@ body {
 .tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
 
 /* 题目信息 */
-#tab-problem { font-size: 14px; line-height: 1.8; white-space: pre-wrap; }
+#tab-problem { font-size: 14px; line-height: 1.8; }
 #tab-problem .problem-empty {
   color: var(--text-dim);
   font-style: italic;
 }
+.problem-desc { white-space: pre-wrap; word-break: break-word; }
+.sec-title {
+  margin: 20px 0 10px;
+  font-size: 15px;
+  color: var(--accent-hover);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+}
+.problem-example { margin-bottom: 14px; }
+.example-title { font-weight: 600; margin-bottom: 6px; color: var(--text); }
+.problem-example pre {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.problem-constraints { white-space: pre-wrap; word-break: break-word; }
 
 /* 算法解析 */
 #tab-analysis { font-size: 14px; line-height: 1.8; }
@@ -297,6 +324,7 @@ body {
   text-align: center;
 }
 .mermaid-error { color: var(--red); font-size: 13px; }
+.mermaid-loading { color: var(--text-dim); font-size: 14px; padding: 30px 0; }
 .mermaid-source { margin-top: 14px; font-size: 13px; color: var(--text-dim); }
 .mermaid-source summary { cursor: pointer; margin-bottom: 8px; }
 .mermaid-source pre {

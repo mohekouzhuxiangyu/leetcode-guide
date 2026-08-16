@@ -58,6 +58,7 @@ def _worker(job_id: str, url: str) -> None:
                 "difficulty": problem.get("difficulty", "Unknown"),
                 "tags": problem.get("tags", []),
                 "problem": problem,
+                "problem_zh": result.get("problem_zh", ""),
                 "analysis": result.get("analysis", ""),
                 "flowchart": result.get("flowchart", ""),
                 "code": result.get("code", {}),
