@@ -1470,7 +1470,12 @@ function highlightTitle(title, query) {
 function filterHistoryItems(items) {
   let filtered = items;
   if (state.groupFilter !== "全部") {
-    filtered = filtered.filter((i) => (i.group || "") === state.groupFilter);
+    if (state.groupFilter === "") {
+      // 未分组：不属于任何分组的记录
+      filtered = filtered.filter((i) => !(i.groups || []).length);
+    } else {
+      filtered = filtered.filter((i) => (i.groups || []).includes(state.groupFilter));
+    }
   }
   if (state.categoryFilter !== "全部") {
     filtered = filtered.filter((i) => (i.category || "其他") === state.categoryFilter);
@@ -1763,7 +1768,8 @@ async function startBatch() {
         const data = await resp.json();
         if (!resp.ok) { toast(data.detail || "启动失败", true); return; }
         if (data.invalid_count) toast(`有 ${data.invalid_count} 个链接无法解析，已跳过`, true);
-        if (data.skipped) toast(`已跳过 ${data.skipped} 道已生成过的题目`, true);
+        if (data.skipped) toast(`已跳过 ${data.skipped} 道已在目标分组内的题目`, true);
+        if (data.reused) toast(`已复用 ${data.reused} 道已生成的题目（未重复生成、未扣费）`, true);
         startBatchPolling();
       } catch (err) {
         toast("启动批量生成失败：" + err.message, true);

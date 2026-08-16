@@ -60,6 +60,21 @@ CREATE TABLE IF NOT EXISTS daily_usage (
     PRIMARY KEY (user_id, day)
 );
 
+-- 题目-分组 多对多（同一题可属于多个分组，内容共享；组内不重复）
+CREATE TABLE IF NOT EXISTS record_groups (
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    slug       TEXT NOT NULL,
+    group_name TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (user_id, slug, group_name)
+);
+CREATE INDEX IF NOT EXISTS idx_record_groups_user ON record_groups (user_id, group_name);
+
+-- 迁移：把旧 records.group_name 归属转入关联表（用户私有记录）
+INSERT INTO record_groups (user_id, slug, group_name)
+SELECT user_id, slug, group_name FROM records
+WHERE user_id IS NOT NULL AND group_name <> ''
+ON CONFLICT DO NOTHING;
+
 -- 计费流水（普通 1 元/题，VIP 0.1 元/题，按量记录用于结算）
 CREATE TABLE IF NOT EXISTS usage_log (
     id         SERIAL PRIMARY KEY,

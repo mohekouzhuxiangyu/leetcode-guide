@@ -34,10 +34,24 @@ def _summary_from_row(r) -> dict:
     }
 
 
+def _groups_map(user_id: int) -> dict:
+    """用户记录的分组归属 {slug: [group_name,...]}。"""
+    rows = query(
+        "SELECT slug, group_name FROM record_groups WHERE user_id = %s",
+        (user_id,),
+        fetch="all",
+    )
+    m: dict = {}
+    for r in rows:
+        m.setdefault(r["slug"], []).append(r["group_name"])
+    return m
+
+
 def list_records(user_id: Optional[int]) -> list[dict]:
     """返回当前用户可见的题目列表。
 
     user_id 为 None（游客）时只返回共享目录（user_id IS NULL）。
+    记录可属于多个分组（groups 数组）。
     """
     if user_id is None:
         rows = query(
@@ -45,16 +59,27 @@ def list_records(user_id: Optional[int]) -> list[dict]:
                FROM records WHERE user_id IS NULL ORDER BY updated_at DESC""",
             fetch="all",
         )
-    else:
-        rows = query(
-            """SELECT slug, title, difficulty, tags, category, group_name, url, user_id, created_at, updated_at
-               FROM records
-               WHERE user_id = %s OR user_id IS NULL
-               ORDER BY updated_at DESC""",
-            (user_id,),
-            fetch="all",
-        )
-    return [_summary_from_row(r) for r in rows]
+        items = []
+        for r in rows:
+            item = _summary_from_row(r)
+            item["groups"] = [r["group_name"]] if r["group_name"] else []
+            items.append(item)
+        return items
+    rows = query(
+        """SELECT slug, title, difficulty, tags, category, group_name, url, user_id, created_at, updated_at
+           FROM records
+           WHERE user_id = %s OR user_id IS NULL
+           ORDER BY updated_at DESC""",
+        (user_id,),
+        fetch="all",
+    )
+    m = _groups_map(user_id)
+    items = []
+    for r in rows:
+        item = _summary_from_row(r)
+        item["groups"] = m.get(r["slug"], []) if r["user_id"] is not None else ([r["group_name"]] if r["group_name"] else [])
+        items.append(item)
+    return items
 
 
 def user_has_record(user_id: int, slug: str) -> bool:
@@ -82,6 +107,18 @@ def get_record(user_id: Optional[int], slug: str) -> Optional[dict]:
         )
     if row is None:
         return None
+    groups = []
+    if user_id is not None and row["user_id"] is not None:
+        groups = [
+            r["group_name"]
+            for r in query(
+                "SELECT group_name FROM record_groups WHERE user_id = %s AND slug = %s",
+                (user_id, slug),
+                fetch="all",
+            )
+        ]
+    elif row["user_id"] is None and row["group_name"]:
+        groups = [row["group_name"]]
     return {
         "slug": row["slug"],
         "url": row["url"] or f"https://leetcode.cn/problems/{row['slug']}/",
@@ -89,7 +126,8 @@ def get_record(user_id: Optional[int], slug: str) -> Optional[dict]:
         "difficulty": row["difficulty"],
         "tags": row["tags"] or [],
         "category": row["category"],
-        "group": row["group_name"] or "",
+        "group": groups[0] if groups else "",
+        "groups": groups,
         "shared": row["user_id"] is None,
         "problem": row["problem"] or {},
         "problem_zh": row["problem_zh"] or "",
@@ -180,15 +218,47 @@ def upsert_record(user_id: Optional[int], slug: str, record: dict) -> None:
 
 
 def delete_record(user_id: int, slug: str) -> bool:
-    """删除用户自己的记录（共享目录不可删除）。"""
+    """删除用户自己的记录及分组归属（共享目录不可删除）。"""
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM record_groups WHERE user_id = %s AND slug = %s", (user_id, slug))
+            cur.execute("DELETE FROM records WHERE user_id = %s AND slug = %s", (user_id, slug))
+        return True
+    finally:
+        conn.close()
+
+
+# ---------------- 分组（多对多：一题可属多组，内容共享） ----------------
+
+def add_to_group(user_id: int, slug: str, group: str) -> bool:
+    """把记录加入分组（组内重复自动忽略，返回是否新增）。"""
+    if not group:
+        return False
     n = query(
-        "DELETE FROM records WHERE user_id = %s AND slug = %s",
-        (user_id, slug),
+        "INSERT INTO record_groups (user_id, slug, group_name) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
+        (user_id, slug, group),
     )
     return bool(n)
 
 
-# ---------------- 分组 ----------------
+def remove_from_group(user_id: int, slug: str, group: str) -> None:
+    query(
+        "DELETE FROM record_groups WHERE user_id = %s AND slug = %s AND group_name = %s",
+        (user_id, slug, group),
+    )
+
+
+def slugs_in_group(user_id: int, group: str, slugs: list) -> set:
+    if not slugs:
+        return set()
+    rows = query(
+        "SELECT slug FROM record_groups WHERE user_id = %s AND group_name = %s AND slug = ANY(%s)",
+        [user_id, group, list(slugs)],
+        fetch="all",
+    )
+    return {r["slug"] for r in rows}
+
 
 def list_groups(user_id: Optional[int]) -> list[dict]:
     """返回分组列表（共享分组 + 用户分组），带题数。游客只看到共享分组。"""
@@ -216,19 +286,26 @@ def list_groups(user_id: Optional[int]) -> list[dict]:
                 fetch="all",
             )
         ]
+        # 用户分组题数 = 各组去重 slug 数（多对多）
         count_rows = query(
-            """SELECT group_name, COUNT(*) AS c FROM records
-               WHERE (user_id = %s OR user_id IS NULL) AND group_name <> '' GROUP BY group_name""",
+            "SELECT group_name, COUNT(DISTINCT slug) AS c FROM record_groups WHERE user_id = %s GROUP BY group_name",
             (user_id,),
             fetch="all",
         )
+        # 共享 hot100 分组
+        count_rows += query(
+            """SELECT group_name, COUNT(*) AS c FROM records
+               WHERE user_id IS NULL AND group_name <> '' GROUP BY group_name""",
+            fetch="all",
+        )
         ungrouped_row = query(
-            """SELECT COUNT(*) AS c FROM records
-               WHERE (user_id = %s OR user_id IS NULL) AND (group_name = '' OR group_name IS NULL)""",
-            (user_id,),
+            "SELECT COUNT(*) AS c FROM records WHERE user_id = %s AND slug NOT IN (SELECT slug FROM record_groups WHERE user_id = %s)",
+            (user_id, user_id),
             fetch="one",
         )
-    counts = {r["group_name"]: r["c"] for r in count_rows}
+    counts = {}
+    for r in count_rows:
+        counts[r["group_name"]] = counts.get(r["group_name"], 0) + r["c"]
     ungrouped = ungrouped_row["c"] if ungrouped_row else 0
     names = list(dict.fromkeys(explicit + list(counts.keys())))
     result = [{"name": n, "count": counts.get(n, 0), "explicit": n in explicit} for n in names]
@@ -247,14 +324,15 @@ def create_group(user_id: int, name: str) -> bool:
 
 def delete_group(user_id: int, name: str) -> None:
     query("DELETE FROM groups WHERE user_id = %s AND name = %s", (user_id, name))
+    query("DELETE FROM record_groups WHERE user_id = %s AND group_name = %s", (user_id, name))
 
 
 def move_records(user_id: int, slugs: list, group: str) -> int:
-    """把用户自己的记录移动到指定分组。"""
+    """把记录加入指定分组（多对多；已在组内自动忽略）。"""
     if not slugs:
         return 0
-    n = query(
-        "UPDATE records SET group_name = %s WHERE user_id = %s AND slug = ANY(%s)",
-        [group, user_id, list(slugs)],
-    )
-    return n or 0
+    n = 0
+    for s in slugs:
+        if add_to_group(user_id, s, group):
+            n += 1
+    return n

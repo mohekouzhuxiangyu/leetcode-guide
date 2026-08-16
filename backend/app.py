@@ -434,9 +434,10 @@ def _batch_worker() -> None:
         try:
             result = run_pipeline(item["url"])
             record = _record_from_result(result)
-            if item.get("group"):
-                record["group"] = item["group"]
             history.upsert_record(item["user_id"], result["slug"], record)
+            # 生成后加入目标分组（多对多）
+            if item.get("group"):
+                history.add_to_group(item["user_id"], result["slug"], item["group"])
             with _batch_lock:
                 _batch["done"] += 1
         except Exception as exc:  # noqa: BLE001
@@ -477,17 +478,30 @@ async def batch_start(req: BatchStartRequest, user: dict = Depends(get_current_u
             queue.append({"url": url, "slug": slug, "group": (req.group or "").strip(), "user_id": user["id"]})
         if not queue:
             raise HTTPException(status_code=400, detail="没有有效的题目链接（需包含 /problems/ 路径）")
-        # 过滤已生成过的题目（避免重复扣费）
+        # 分组规则：组内不重复；不同分组可重复但复用同一份生成结果（不重复生成、不扣费）
         existed = query(
             "SELECT slug FROM records WHERE user_id = %s AND slug = ANY(%s)",
             [user["id"], [item["slug"] for item in queue]],
             fetch="all",
         )
         existed_slugs = {r["slug"] for r in existed}
-        queue = [item for item in queue if item["slug"] not in existed_slugs]
-        skipped = len(existed_slugs)
-        if not queue:
-            raise HTTPException(status_code=400, detail="所选题目都已生成过，无需重复生成")
+        target_group = (req.group or "").strip()
+        in_group_slugs = history.slugs_in_group(user["id"], target_group, [item["slug"] for item in queue]) if target_group else set()
+        to_generate = [item for item in queue if item["slug"] not in existed_slugs]
+        to_reuse = [item for item in queue if item["slug"] in existed_slugs and item["slug"] not in in_group_slugs]
+        skipped = len([item for item in queue if item["slug"] in in_group_slugs])
+        # 复用：把已生成的记录直接加入目标分组（不生成、不扣费）
+        for item in to_reuse:
+            history.add_to_group(user["id"], item["slug"], target_group)
+        reused = len(to_reuse)
+        if not to_generate:
+            # 全部为复用/已在组内：直接返回完成
+            _batch.update(
+                status="idle", queue=[], total=0, done=0, failed=0,
+                current=None, message="无需生成（全部复用已有结果或已在分组内）",
+            )
+            return {"status": "noop", "total": 0, "invalid_count": len(invalid), "skipped": skipped, "reused": reused}
+        queue = to_generate
         # 计费：普通 1 元/题，VIP 0.1 元/题；每日 200 题上限（按题数占用）
         record_generation(user, [item["slug"] for item in queue])
         _batch.update(
@@ -496,7 +510,7 @@ async def batch_start(req: BatchStartRequest, user: dict = Depends(get_current_u
         )
     _batch_thread = threading.Thread(target=_batch_worker, daemon=True)
     _batch_thread.start()
-    return {"status": "running", "total": len(queue), "invalid_count": len(invalid), "skipped": skipped}
+    return {"status": "running", "total": len(queue), "invalid_count": len(invalid), "skipped": skipped, "reused": reused}
 
 
 @app.post("/api/batch/stop")
