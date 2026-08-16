@@ -41,6 +41,15 @@ CREATE TABLE IF NOT EXISTS vip_orders (
     paid_at    TIMESTAMPTZ
 );
 
+-- 用户题目心得（Markdown 文档，按用户独立）
+CREATE TABLE IF NOT EXISTS user_notes (
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    slug       TEXT NOT NULL,
+    content    TEXT NOT NULL DEFAULT '',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, slug)
+);
+
 -- 登录会话表
 CREATE TABLE IF NOT EXISTS sessions (
     token      TEXT PRIMARY KEY,

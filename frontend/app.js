@@ -1131,6 +1131,71 @@ async function openTemplatesLibrary() {
   show($("templates-panel"));
 }
 
+/* ---------- 题目心得（Markdown） ---------- */
+
+async function renderNoteTab(record) {
+  const slug = record.slug;
+  const editor = $("note-editor");
+  const preview = $("note-preview");
+  editor.value = "";
+  preview.classList.add("hidden");
+  preview.innerHTML = "";
+  editor.classList.remove("hidden");
+  $("note-preview-btn").textContent = "👁 预览";
+  $("note-status").textContent = "";
+  try {
+    const resp = await apiFetch("/api/notes/" + encodeURIComponent(slug));
+    if (resp.ok) {
+      const data = await resp.json();
+      editor.value = data.content || "";
+      if (data.updated_at) $("note-status").textContent = "上次保存：" + data.updated_at;
+    }
+  } catch {
+    /* 忽略 */
+  }
+}
+
+function bindNoteEditor() {
+  $("note-save-btn").addEventListener("click", async () => {
+    if (!requireVip()) return;
+    if (!state.record) return;
+    const slug = state.record.slug;
+    const content = $("note-editor").value || "";
+    try {
+      const resp = await apiFetch("/api/notes/" + encodeURIComponent(slug), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content }),
+      });
+      if (!resp.ok) {
+        const d = await resp.json().catch(() => ({}));
+        toast(d.detail || "保存失败", true);
+        return;
+      }
+      $("note-status").textContent = "已保存 " + new Date().toLocaleString();
+      toast("心得已保存");
+    } catch (err) {
+      toast("保存失败：" + err.message, true);
+    }
+  });
+
+  $("note-preview-btn").addEventListener("click", () => {
+    const preview = $("note-preview");
+    const editor = $("note-editor");
+    if (preview.classList.contains("hidden")) {
+      preview.innerHTML = renderMarkdown(editor.value || "");
+      highlightAll(preview);
+      preview.classList.remove("hidden");
+      editor.classList.add("hidden");
+      $("note-preview-btn").textContent = "✏️ 编辑";
+    } else {
+      preview.classList.add("hidden");
+      editor.classList.remove("hidden");
+      $("note-preview-btn").textContent = "👁 预览";
+    }
+  });
+}
+
 /* ---------- 标签页切换（懒渲染） ---------- */
 
 function switchTab(name) {
@@ -1155,6 +1220,9 @@ function switchTab(name) {
       state.renderedTabs[name] = true;
     } else if (name === "template") {
       renderTemplateTab(state.record.category || "其他");
+      state.renderedTabs[name] = true;
+    } else if (name === "note") {
+      renderNoteTab(state.record);
       state.renderedTabs[name] = true;
     }
   }
@@ -1605,6 +1673,9 @@ function init() {
   });
   $("btn-batch-start").addEventListener("click", startBatch);
   $("btn-batch-stop").addEventListener("click", stopBatch);
+
+  // 题目心得编辑器
+  bindNoteEditor();
 
   $("btn-mermaid-copy").addEventListener("click", async (e) => {
     const ok = await copyText($("mermaid-source-pre").textContent || "");

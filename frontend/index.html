@@ -137,6 +137,7 @@
         <button class="tab" data-tab="flowchart">🔄 流程图</button>
         <button class="tab" data-tab="code">💻 代码</button>
         <button class="tab" data-tab="template">📋 答题模板</button>
+        <button class="tab" data-tab="note">📝 心得</button>
       </div>
 
       <div class="tab-content" id="tab-problem"></div>
@@ -159,6 +160,16 @@
         <div id="code-container"></div>
       </div>
       <div class="tab-content hidden" id="tab-template"></div>
+      <div class="tab-content hidden" id="tab-note">
+        <div class="note-toolbar">
+          <button class="btn btn-small" id="note-preview-btn">👁 预览</button>
+          <button class="btn btn-small btn-start" id="note-save-btn">💾 保存</button>
+          <span class="note-status" id="note-status"></span>
+        </div>
+        <textarea id="note-editor" class="note-editor" spellcheck="false"
+          placeholder="写下你的解题心得…（支持 Markdown：**加粗**、`代码`、列表、标题、引用等，点击「预览」查看富文本效果）"></textarea>
+        <div class="note-preview hidden" id="note-preview"></div>
+      </div>
     </section>
 
     <!-- 模板库 -->

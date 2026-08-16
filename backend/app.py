@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import auth, history, vip
+from .db import query
 from .graph import run_pipeline
 from .leetcode import extract_slug
 from .templates import CATEGORY_TEMPLATES
@@ -385,6 +386,38 @@ async def move_records_api(req: MoveRequest, user: dict = Depends(require_vip)) 
 @app.get("/api/templates")
 async def get_templates() -> dict:
     return {"templates": CATEGORY_TEMPLATES}
+
+
+# ---------------- 题目心得（Markdown 文档，按用户独立） ----------------
+
+class NoteRequest(BaseModel):
+    content: str = ""
+
+
+@app.get("/api/notes/{slug}")
+async def get_note(slug: str, user: dict = Depends(get_current_user)) -> dict:
+    """读取自己的题目心得（免费）。"""
+    row = query(
+        "SELECT content, updated_at FROM user_notes WHERE user_id = %s AND slug = %s",
+        (user["id"], slug),
+        fetch="one",
+    )
+    if not row:
+        return {"slug": slug, "content": "", "updated_at": None}
+    ts = row["updated_at"].strftime("%Y-%m-%d %H:%M:%S") if row["updated_at"] else None
+    return {"slug": slug, "content": row["content"] or "", "updated_at": ts}
+
+
+@app.put("/api/notes/{slug}")
+async def save_note(slug: str, req: NoteRequest, user: dict = Depends(require_vip)) -> dict:
+    """保存自己的题目心得（Markdown，VIP 权限）。"""
+    query(
+        """INSERT INTO user_notes (user_id, slug, content, updated_at)
+           VALUES (%s, %s, %s, now())
+           ON CONFLICT (user_id, slug) DO UPDATE SET content = EXCLUDED.content, updated_at = now()""",
+        (user["id"], slug, req.content or ""),
+    )
+    return {"ok": True, "slug": slug}
 
 
 # ---------------- 历史记录（按用户隔离） ----------------

@@ -960,3 +960,42 @@ mark {
 .vip-plan-name { font-size: 13px; font-weight: 600; }
 .vip-plan-amount { font-size: 20px; font-weight: 800; color: #f59e0b; margin: 4px 0; }
 .vip-plan-desc { font-size: 11px; color: var(--text-dim); }
+
+/* ---------- 题目心得编辑器 ---------- */
+.note-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.note-status { font-size: 12px; color: var(--text-dim); }
+.note-editor {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 320px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.7;
+  padding: 14px;
+  outline: none;
+  resize: vertical;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+}
+.note-editor:focus { border-color: var(--accent); }
+.note-preview {
+  min-height: 320px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 18px;
+  font-size: 14px;
+  line-height: 1.8;
+  word-break: break-word;
+}
+.note-preview h1, .note-preview h2, .note-preview h3 { color: var(--accent-hover); margin: 16px 0 8px; }
+.note-preview p { margin: 8px 0; }
+.note-preview code { background: rgba(79, 140, 255, 0.12); padding: 1px 6px; border-radius: 4px; font-size: 13px; }
+.note-preview pre { background: #0b1220; border-radius: 8px; padding: 12px; overflow-x: auto; }
+.note-preview pre code { background: none; padding: 0; }
+.note-preview ul, .note-preview ol { padding-left: 22px; }
+.note-preview blockquote { border-left: 3px solid var(--accent); padding-left: 12px; color: var(--text-dim); margin: 10px 0; }
+.note-preview table { border-collapse: collapse; margin: 10px 0; }
+.note-preview th, .note-preview td { border: 1px solid var(--border); padding: 6px 12px; }
