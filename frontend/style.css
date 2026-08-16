@@ -44,7 +44,13 @@ body {
 }
 
 .brand { display: flex; gap: 10px; align-items: center; margin-bottom: 18px; }
-.brand-icon { font-size: 30px; }
+.brand-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  object-fit: cover;
+  flex: 0 0 auto;
+}
 .brand-name { font-size: 16px; font-weight: 700; }
 .brand-sub { font-size: 11px; color: var(--text-dim); }
 
