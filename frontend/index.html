@@ -18,6 +18,24 @@
     </div>
 
     <button id="btn-new" class="btn btn-primary btn-block">＋ 新建题目</button>
+    <button id="btn-templates" class="btn btn-secondary btn-block">📋 算法模板库</button>
+
+    <!-- Hot 100 批量生成 -->
+    <div class="history-title">🔥 Hot 100 批量生成</div>
+    <div id="batch-panel">
+      <button id="btn-hot100-init" class="btn btn-small btn-block">📥 获取 Hot 100 列表</button>
+      <div id="hot100-summary" class="hot100-summary hidden"></div>
+      <button id="btn-batch-start" class="btn btn-small btn-start btn-block hidden">▶ 批量生成全部</button>
+      <button id="btn-batch-stop" class="btn btn-small btn-stop btn-block hidden">⏹ 停止生成</button>
+      <div id="batch-status" class="batch-status hidden"></div>
+      <div class="batch-progress hidden" id="batch-progress">
+        <div class="batch-bar" id="batch-bar"></div>
+      </div>
+    </div>
+
+    <!-- 算法分类筛选 -->
+    <div class="history-title">🗂️ 算法分类</div>
+    <div id="category-filter" class="category-filter"></div>
 
     <div class="history-title">📚 历史记录</div>
     <ul id="history-list" class="history-list">
@@ -29,7 +47,7 @@
     <!-- 输入区 -->
     <section id="input-panel" class="panel">
       <h1>输入力扣题目链接</h1>
-      <p class="subtitle">粘贴 Hot 100 任意一题的链接，Agent 自动生成算法解析、流程图与多语言代码</p>
+      <p class="subtitle">粘贴 Hot 100 任意一题的链接，Agent 自动生成算法解析、动画演示、流程图与多语言代码</p>
       <div class="input-row">
         <input id="url-input" type="text" spellcheck="false"
                placeholder="https://leetcode.cn/problems/two-sum/ 或 https://leetcode.com/problems/..." />
@@ -49,6 +67,7 @@
         <li data-stage="fetch">📥 抓取题目信息</li>
         <li data-stage="translate">🌐 翻译中文题目</li>
         <li data-stage="analyze">📝 算法分析</li>
+        <li data-stage="walkthrough">🎬 生成动画演示</li>
         <li data-stage="flowchart">🔄 生成流程图</li>
         <li data-stage="code">💻 生成代码</li>
         <li data-stage="done">💾 保存记录</li>
@@ -66,6 +85,7 @@
         <div class="result-title-row">
           <h2 id="result-title"></h2>
           <span id="result-difficulty" class="badge"></span>
+          <span id="result-category" class="category-badge hidden"></span>
         </div>
         <div id="result-tags" class="tag-row"></div>
         <div class="result-meta">
@@ -78,12 +98,17 @@
       <div class="tabs" id="tabs">
         <button class="tab active" data-tab="problem">📋 题目信息</button>
         <button class="tab" data-tab="analysis">📝 算法解析</button>
+        <button class="tab" data-tab="walkthrough">🎬 动画演示</button>
         <button class="tab" data-tab="flowchart">🔄 流程图</button>
         <button class="tab" data-tab="code">💻 代码</button>
+        <button class="tab" data-tab="template">📋 答题模板</button>
       </div>
 
       <div class="tab-content" id="tab-problem"></div>
       <div class="tab-content hidden" id="tab-analysis"></div>
+      <div class="tab-content hidden" id="tab-walkthrough">
+        <div id="walkthrough-container"></div>
+      </div>
       <div class="tab-content hidden" id="tab-flowchart">
         <div class="mermaid-toolbar">
           <button id="btn-mermaid-copy" class="btn btn-small">📋 复制 Mermaid 源码</button>
@@ -98,6 +123,17 @@
         <div id="code-langs" class="code-langs"></div>
         <div id="code-container"></div>
       </div>
+      <div class="tab-content hidden" id="tab-template"></div>
+    </section>
+
+    <!-- 模板库 -->
+    <section id="templates-panel" class="panel hidden">
+      <div class="templates-header">
+        <h2>📋 算法答题模板库</h2>
+        <button id="btn-templates-back" class="btn btn-small">← 返回</button>
+      </div>
+      <p class="subtitle">针对每种算法类型的固定答题模板（Python 骨架），套用模板可快速写出标准解</p>
+      <div id="templates-list" class="templates-list"></div>
     </section>
   </main>
 

@@ -8,7 +8,7 @@ from typing import Callable, Optional, TypedDict
 
 from langgraph.graph import END, StateGraph
 
-from . import leetcode
+from . import categories, leetcode, templates
 from .llm import create_llm
 
 StageCallback = Callable[[str, str], None]
@@ -20,7 +20,9 @@ class AgentState(TypedDict, total=False):
     title: str
     problem: dict
     problem_zh: str
+    category: str
     analysis: str
+    walkthrough: str
     flowchart: str
     code: dict
     errors: dict
@@ -79,6 +81,13 @@ CODE_PROMPT = """你是一位严谨的算法工程师，为力扣题目生成可
 算法思路（供参考，实现必须与之一致）：
 {analysis}
 
+本题算法类别：{category}
+
+该类别对应的答题模板（实现必须遵循模板的整体框架，在此骨架上填充本题逻辑）：
+```python
+{template}
+```
+
 请严格按照以下格式输出三个语言的代码（不要输出任何额外解释）：
 
 ## Python3
@@ -125,6 +134,39 @@ TRANSLATE_PROMPT = """你是一位专业翻译。请把下面的力扣（LeetCod
 1. 输入/输出中的数组、变量名、函数名等代码标识符保持英文原样；
 2. 如果有“进阶/Follow up”说明，翻译后在末尾追加“进阶：...”小节；
 3. 如果原文没有示例或约束，就省略对应小节。
+"""
+
+
+WALKTHROUGH_PROMPT = """你是一位算法教学演示专家。请选取题目给出的**一个具体输入示例**，
+把算法在它上面的**每一步执行过程**拆解成可播放的动画帧，让完全不懂算法的人也能看懂。
+
+题目：{title}（{difficulty}）
+算法思路参考：
+{analysis}
+
+要求：
+1. 选择最简单的示例（优先使用题目第一个示例），从“初始化”到“返回结果”共 5~10 步。
+2. 每一步都要给出：步骤序号、标题、当前状态说明（用了什么变量、做了什么操作）、以及可选的直观数据。
+3. **必须只输出一个合法 JSON 数组**，不要输出任何解释文字。数组每个元素格式：
+
+{{
+  "i": 1,
+  "title": "初始化",
+  "note": "用自然语言说明这一步做了什么、为什么这么做（面向初学者，通俗易懂）",
+  "data": {{
+    "array": [2, 7, 11, 15],
+    "pointers": {{"i": 0}},
+    "highlight": [0],
+    "map": {{"2": 0}},
+    "stack": [],
+    "queue": []
+  }}
+}}
+
+说明：
+- data 是可选的。array=数组当前内容；pointers=指针名到下标的映射；highlight=要高亮的数组下标；map=哈希表内容（键为字符串）；stack/queue=栈或队列当前内容。
+- 不是数组类问题（链表、树、字符串等）时，可省略 array/highlight，用 note 描述清楚即可，或把链表/树的关键状态用文字写进 note。
+- 每一步的 data 必须和上一步有可观察的变化（数组/指针/哈希表在动）。
 """
 
 
@@ -284,7 +326,46 @@ def fetch_node(state: AgentState) -> dict:
     problem = leetcode.fetch_problem(slug) if slug else None
     if problem is None:
         problem = leetcode.fallback_problem(slug or "", state.get("url", ""))
-    return {"problem": problem, "title": problem["title"]}
+    category, _ = categories.classify(problem.get("tags"))
+    return {"problem": problem, "title": problem["title"], "category": category}
+
+
+def walkthrough_node(state: AgentState, llm) -> dict:
+    """生成逐步动画演示（JSON 步骤数组）。"""
+    problem = state.get("problem") or {}
+    prompt = WALKTHROUGH_PROMPT.format(
+        title=problem.get("title", state.get("title", "")),
+        difficulty=problem.get("difficulty", "未知"),
+        analysis=state.get("analysis", "（暂无解析）"),
+    )
+    raw = _call_llm(llm, prompt)
+    steps = _extract_json_steps(raw)
+    return {"walkthrough": steps}
+
+
+def _extract_json_steps(text: str) -> str:
+    """从 LLM 输出中提取 JSON 步骤数组；失败时返回空串。"""
+    import json
+
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+        cleaned = re.sub(r"\s*```$", "", cleaned)
+    try:
+        data = json.loads(cleaned)
+        if isinstance(data, list):
+            return json.dumps(data, ensure_ascii=False)
+    except json.JSONDecodeError:
+        # 尝试从文本中截取第一个 [ ... ] 块
+        m = re.search(r"\[.*\]", cleaned, re.S)
+        if m:
+            try:
+                data = json.loads(m.group(0))
+                if isinstance(data, list):
+                    return json.dumps(data, ensure_ascii=False)
+            except json.JSONDecodeError:
+                pass
+    return ""
 
 
 def translate_node(state: AgentState, llm) -> dict:
@@ -324,6 +405,9 @@ def flowchart_node(state: AgentState, llm) -> dict:
 def code_node(state: AgentState, llm) -> dict:
     problem = state.get("problem") or {}
     content, note = _problem_context(state)
+    category = state.get("category") or "其他"
+    tpl = templates.get_template(category)
+    template_code = (tpl or {}).get("python", "# 无固定模板")
     prompt = CODE_PROMPT.format(
         title=problem.get("title", state.get("title", "")),
         difficulty=problem.get("difficulty", "未知"),
@@ -331,6 +415,8 @@ def code_node(state: AgentState, llm) -> dict:
         content=content or "（题目原文缺失）",
         fetch_note=note,
         analysis=state.get("analysis", "（暂无解析）"),
+        category=category,
+        template=template_code,
     )
     return {"code": _extract_code(_call_llm(llm, prompt))}
 
@@ -352,12 +438,14 @@ def run_pipeline(url: str, set_stage: Optional[StageCallback] = None) -> dict:
     builder.add_node("fetch", fetch_node)
     builder.add_node("translate", lambda s: translate_node(s, llm))
     builder.add_node("analyze", lambda s: analyze_node(s, llm))
+    builder.add_node("walkthrough", lambda s: walkthrough_node(s, llm))
     builder.add_node("flowchart", lambda s: flowchart_node(s, llm))
     builder.add_node("code", lambda s: code_node(s, llm))
     builder.set_entry_point("fetch")
     builder.add_edge("fetch", "translate")
     builder.add_edge("translate", "analyze")
-    builder.add_edge("analyze", "flowchart")
+    builder.add_edge("analyze", "walkthrough")
+    builder.add_edge("walkthrough", "flowchart")
     builder.add_edge("flowchart", "code")
     builder.add_edge("code", END)
     graph = builder.compile()
@@ -379,6 +467,8 @@ def run_pipeline(url: str, set_stage: Optional[StageCallback] = None) -> dict:
                 elif node_name == "translate":
                     stage("analyze", "算法分析 agent 正在撰写解析…")
                 elif node_name == "analyze":
+                    stage("walkthrough", "演示 agent 正在生成逐步动画…")
+                elif node_name == "walkthrough":
                     stage("flowchart", "流程图 agent 正在绘制算法流程…")
                 elif node_name == "flowchart":
                     stage("code", "代码 agent 正在生成多语言题解…")
@@ -398,7 +488,9 @@ def run_pipeline(url: str, set_stage: Optional[StageCallback] = None) -> dict:
         "title": final_state.get("title") or problem["title"],
         "problem": problem,
         "problem_zh": final_state.get("problem_zh", ""),
+        "category": final_state.get("category") or "其他",
         "analysis": final_state.get("analysis", ""),
+        "walkthrough": final_state.get("walkthrough", ""),
         "flowchart": final_state.get("flowchart", ""),
         "code": final_state.get("code", {}),
         "errors": errors,

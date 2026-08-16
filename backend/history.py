@@ -44,6 +44,7 @@ def list_records() -> list[dict]:
                 "title": rec.get("title", slug),
                 "difficulty": rec.get("difficulty", "Unknown"),
                 "tags": rec.get("tags", []),
+                "category": rec.get("category", "其他"),
                 "created_at": rec.get("created_at"),
                 "updated_at": rec.get("updated_at"),
             }

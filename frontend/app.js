@@ -2,7 +2,7 @@
 "use strict";
 
 const $ = (id) => document.getElementById(id);
-const STAGES = ["fetch", "translate", "analyze", "flowchart", "code", "done"];
+const STAGES = ["fetch", "translate", "analyze", "walkthrough", "flowchart", "code", "done"];
 const DIFF_ZH = { Easy: "简单", Medium: "中等", Hard: "困难", Unknown: "未知" };
 const LANG_ALIAS = {
   Python3: { label: "🐍 Python3", hl: "python" },
@@ -15,11 +15,16 @@ let currentSlug = null;
 let pollTimer = null;
 let mermaidSeq = 0;
 
-/* 会话状态：当前记录缓存 + 各标签页懒渲染标记（历史切换卡顿的主因是每次都重渲染流程图） */
+/* 会话状态：记录缓存 + 标签页懒渲染 + 分类筛选 + 批量生成 */
 const state = {
   record: null,
   renderedTabs: {},
   cache: {},
+  categoryFilter: "全部",
+  historyItems: [],
+  templates: null,
+  hot100: null,
+  batchTimer: null,
 };
 
 /* ---------- 工具函数 ---------- */
@@ -54,24 +59,21 @@ async function copyText(text) {
 function show(el) { el.classList.remove("hidden"); }
 function hide(el) { el.classList.add("hidden"); }
 
-/* 防御性渲染：即使某个第三方库加载失败，页面也不报错、尽量降级展示 */
 function highlightAll(container) {
-  if (typeof hljs === "undefined") return; // 高亮库不可用则跳过
+  if (typeof hljs === "undefined") return;
   container.querySelectorAll("pre code").forEach((c) => {
-    try { hljs.highlightElement(c); } catch (e) { /* 单个代码块高亮失败不影响整体 */ }
+    try { hljs.highlightElement(c); } catch (e) { /* ignore */ }
   });
 }
 
 function renderMarkdown(text) {
   if (typeof marked !== "undefined") {
-    try { return marked.parse(text); } catch (e) { /* 解析失败降级为纯文本 */ }
+    try { return marked.parse(text); } catch (e) { /* ignore */ }
   }
   return `<pre style="white-space:pre-wrap;word-break:break-word;">${escapeHtml(text)}</pre>`;
 }
 
-/* ---------- Mermaid 消毒（与后端 sanitize_mermaid 逻辑一致） ----------
-   LLM 生成的节点文本常含 [ ] = < > 等特殊字符导致 "Syntax error in text"，
-   这里统一给所有节点文本加双引号并转义。 */
+/* ---------- Mermaid 消毒 ---------- */
 
 function quoteMermaidText(text) {
   text = text.trim();
@@ -175,8 +177,6 @@ function sanitizeMermaid(code) {
   return out.join("\n");
 }
 
-/* ---------- 流程图渲染（带消毒与降级） ---------- */
-
 async function renderMermaidGraph(container, code) {
   if (typeof mermaid === "undefined") {
     container.innerHTML = `<div class="mermaid-error">流程图渲染库未加载，以下是 Mermaid 源码：</div><pre style="text-align:left;white-space:pre-wrap;">${escapeHtml(code)}</pre>`;
@@ -199,6 +199,7 @@ function showInputOnly() {
   hide($("progress-panel"));
   hide($("result-panel"));
   hide($("error-panel"));
+  hide($("templates-panel"));
   show($("input-panel"));
 }
 
@@ -206,6 +207,7 @@ function showProgress() {
   hide($("input-panel"));
   hide($("result-panel"));
   hide($("error-panel"));
+  hide($("templates-panel"));
   show($("progress-panel"));
   $("progress-steps").querySelectorAll("li").forEach((li) => {
     li.classList.remove("active", "done");
@@ -217,6 +219,7 @@ function showResult() {
   hide($("input-panel"));
   hide($("progress-panel"));
   hide($("error-panel"));
+  hide($("templates-panel"));
   show($("result-panel"));
 }
 
@@ -224,6 +227,7 @@ function showError(msg) {
   hide($("input-panel"));
   hide($("progress-panel"));
   hide($("result-panel"));
+  hide($("templates-panel"));
   const el = $("error-panel");
   el.textContent = msg;
   show(el);
@@ -258,10 +262,9 @@ async function pollJob() {
     if (!resp.ok) throw new Error(job.detail || "查询任务失败");
 
     const stageIdx = STAGES.indexOf(job.stage);
-    $("progress-steps").querySelectorAll("li").forEach((li, i) => {
+    $("progress-steps").querySelectorAll("li").forEach((li) => {
       li.classList.remove("active", "done");
-      const s = li.dataset.stage;
-      const sIdx = STAGES.indexOf(s);
+      const sIdx = STAGES.indexOf(li.dataset.stage);
       if (job.status === "running" && sIdx < stageIdx) li.classList.add("done");
       if (sIdx === stageIdx) li.classList.add("active");
     });
@@ -280,6 +283,7 @@ async function pollJob() {
       try {
         renderResult(job.result);
         showResult();
+        loadHistory();
       } catch (err) {
         console.error("渲染结果失败:", err);
         showError("渲染结果失败：" + err.message);
@@ -312,7 +316,6 @@ function parseProblemSections(text) {
     const exM = t.match(/^(示例|Example)\s*(\d*)\s*[:：]?\s*(.*)$/);
     const conM = t.match(/^(约束|提示|Constraints)\s*[:：]?(.*)$/);
     if (t !== "```" && exM) {
-      // 裸的“示例：”标题行跳过；带编号或内容的行才开始新示例
       if (exM[2] !== "" || exM[3].trim() !== "") {
         mode = "ex";
         cur = { title: t, body: [] };
@@ -322,7 +325,6 @@ function parseProblemSections(text) {
     }
     if (t !== "```" && conM) {
       mode = "con";
-      // 裸的“约束：”标题行跳过，只保留约束条目
       if (conM[2].trim() !== "") constraints.push(ln);
       continue;
     }
@@ -357,6 +359,14 @@ function renderResult(record) {
   diff.textContent = DIFF_ZH[problem.difficulty] || problem.difficulty || "未知";
   diff.className = "badge " + (problem.difficulty || "Unknown");
 
+  const catEl = $("result-category");
+  if (record.category && record.category !== "其他") {
+    catEl.textContent = "🗂 " + record.category;
+    catEl.classList.remove("hidden");
+  } else {
+    catEl.classList.add("hidden");
+  }
+
   const tagRow = $("result-tags");
   tagRow.innerHTML = "";
   (problem.tags || []).forEach((t) => {
@@ -373,7 +383,6 @@ function renderResult(record) {
   const timeText = record.updated_at || record.created_at || new Date().toLocaleString();
   $("result-time").textContent = `生成于 ${timeText} ${note}`;
 
-  // 只立即渲染题目信息页；算法解析 / 流程图 / 代码首次打开对应标签页时才渲染
   renderProblemTab(problem, record);
   state.renderedTabs.problem = true;
 
@@ -385,25 +394,10 @@ function renderProblemTab(problem, record) {
   const el = $("tab-problem");
   const content = (problem.content_text || "").trim();
   const snippets = problem.code_snippets || {};
-  // 优先展示 agent 生成的结构化中文题目信息
   const zh = (record.problem_zh || "").trim();
   let html = "";
-  if (zh) {
-    const { description, examples, constraints } = parseProblemSections(zh);
-    if (description) html += `<div class="problem-desc">${escapeHtml(description)}</div>`;
-    if (examples.length) {
-      html += `<h3 class="sec-title">📌 示例</h3>`;
-      for (const ex of examples) {
-        html += `<div class="problem-example"><div class="example-title">${escapeHtml(ex.title)}</div>`;
-        if (ex.body) html += `<pre>${escapeHtml(ex.body)}</pre>`;
-        html += `</div>`;
-      }
-    }
-    if (constraints) {
-      html += `<h3 class="sec-title">⚠️ 约束</h3><div class="problem-constraints">${escapeHtml(constraints)}</div>`;
-    }
-  } else if (content) {
-    const { description, examples, constraints } = parseProblemSections(content);
+  if (zh || content) {
+    const { description, examples, constraints } = parseProblemSections(zh || content);
     if (description) html += `<div class="problem-desc">${escapeHtml(description)}</div>`;
     if (examples.length) {
       html += `<h3 class="sec-title">📌 示例</h3>`;
@@ -495,6 +489,186 @@ function showCodeLang(lang) {
   });
 }
 
+/* ---------- 动画演示（逐步播放） ---------- */
+
+const wt = { steps: [], idx: 0, timer: null };
+
+function renderWalkthroughTab(raw) {
+  const container = $("walkthrough-container");
+  let steps = [];
+  try { steps = JSON.parse(raw || "[]"); } catch (e) { steps = []; }
+  if (!Array.isArray(steps) || !steps.length) {
+    container.innerHTML = `<div class="problem-empty">动画演示生成失败（可点击「重新生成」重试）。</div>`;
+    return;
+  }
+  wt.steps = steps;
+  wt.idx = 0;
+  wt.timer = null;
+  container.innerHTML = `
+    <div class="wt-tip">🎬 点击「下一步」逐步观察算法执行过程，也可自动播放</div>
+    <div class="wt-board" id="wt-board"></div>
+    <div class="wt-controls">
+      <button class="btn btn-small" id="wt-prev">◀ 上一步</button>
+      <span class="wt-counter" id="wt-counter"></span>
+      <button class="btn btn-small" id="wt-next">下一步 ▶</button>
+      <button class="btn btn-small" id="wt-play">▶ 自动播放</button>
+    </div>
+    <div class="wt-dots" id="wt-dots"></div>`;
+  $("wt-prev").addEventListener("click", () => wtStep(-1));
+  $("wt-next").addEventListener("click", () => wtStep(1));
+  $("wt-play").addEventListener("click", wtTogglePlay);
+  renderWtStep();
+}
+
+function renderWtStep() {
+  const s = wt.steps[wt.idx] || {};
+  const data = s.data || {};
+  const board = $("wt-board");
+  let html = `<div class="wt-title">第 ${wt.idx + 1} 步：${escapeHtml(s.title || "")}</div>`;
+
+  if (Array.isArray(data.array)) {
+    html += `<div class="wt-array">`;
+    data.array.forEach((v, k) => {
+      const hl = (data.highlight || []).includes(k) ? " hl" : "";
+      html += `<div class="wt-cell${hl}">${escapeHtml(String(v))}</div>`;
+    });
+    html += `</div>`;
+    if (data.pointers && Object.keys(data.pointers).length) {
+      html += `<div class="wt-pointers">`;
+      for (const [name, pos] of Object.entries(data.pointers)) {
+        html += `<div class="wt-ptr" style="margin-left:${Math.max(0, pos) * 68 + 6}px">▼ <b>${escapeHtml(name)}</b>=${escapeHtml(String(pos))}</div>`;
+      }
+      html += `</div>`;
+    }
+  }
+
+  if (data.map && Object.keys(data.map).length) {
+    html += `<div class="wt-map"><div class="wt-map-title">🗺 哈希表</div><table><tr><th>键</th><th>值</th></tr>`;
+    for (const [k, v] of Object.entries(data.map)) {
+      html += `<tr><td>${escapeHtml(k)}</td><td>${escapeHtml(String(v))}</td></tr>`;
+    }
+    html += `</table></div>`;
+  }
+
+  for (const key of ["stack", "queue"]) {
+    if (Array.isArray(data[key]) && data[key].length) {
+      const label = key === "stack" ? "📚 栈" : "🎢 队列";
+      html += `<div class="wt-seq"><span class="wt-seq-label">${label}</span>`;
+      data[key].forEach((v) => { html += `<span class="wt-seq-item">${escapeHtml(String(v))}</span>`; });
+      html += `</div>`;
+    }
+  }
+
+  html += `<div class="wt-note">💡 ${escapeHtml(s.note || "")}</div>`;
+  board.innerHTML = html;
+
+  $("wt-counter").textContent = `${wt.idx + 1} / ${wt.steps.length}`;
+  $("wt-dots").innerHTML = wt.steps
+    .map((_, k) => `<span class="wt-dot${k === wt.idx ? " active" : ""}" data-k="${k}"></span>`)
+    .join("");
+  $("wt-dots").querySelectorAll(".wt-dot").forEach((d) => {
+    d.addEventListener("click", () => { wt.idx = Number(d.dataset.k); renderWtStep(); });
+  });
+  $("wt-prev").disabled = wt.idx === 0;
+  $("wt-next").disabled = wt.idx === wt.steps.length - 1;
+}
+
+function wtStep(delta) {
+  wt.idx = Math.min(wt.steps.length - 1, Math.max(0, wt.idx + delta));
+  renderWtStep();
+}
+
+function wtTogglePlay() {
+  const btn = $("wt-play");
+  if (wt.timer) {
+    clearInterval(wt.timer);
+    wt.timer = null;
+    btn.textContent = "▶ 自动播放";
+    return;
+  }
+  if (wt.idx >= wt.steps.length - 1) { wt.idx = 0; renderWtStep(); }
+  btn.textContent = "⏸ 暂停";
+  wt.timer = setInterval(() => {
+    if (wt.idx >= wt.steps.length - 1) {
+      clearInterval(wt.timer);
+      wt.timer = null;
+      $("wt-play").textContent = "▶ 自动播放";
+      return;
+    }
+    wt.idx += 1;
+    renderWtStep();
+  }, 1500);
+}
+
+/* ---------- 答题模板 ---------- */
+
+async function loadTemplates() {
+  if (state.templates) return state.templates;
+  try {
+    const resp = await fetch("/api/templates");
+    state.templates = (await resp.json()).templates || {};
+  } catch {
+    state.templates = {};
+  }
+  return state.templates;
+}
+
+async function renderTemplateTab(category) {
+  const el = $("tab-template");
+  const templates = await loadTemplates();
+  const tpl = templates[category];
+  if (!tpl) {
+    el.innerHTML = `<p class="problem-empty">「${escapeHtml(category)}」暂无固定模板，可查看「算法模板库」。</p>`;
+    return;
+  }
+  el.innerHTML = `
+    <div class="tpl-header">
+      <h3>${escapeHtml(tpl.name)}</h3>
+      <span class="tpl-when">🎯 适用场景：${escapeHtml(tpl.when)}</span>
+    </div>
+    <div class="code-block">
+      <button class="code-copy" data-copy>📋 复制模板</button>
+      <pre><code class="language-python">${escapeHtml(tpl.python)}</code></pre>
+    </div>
+    <p class="hint">💡 本题的「代码」标签页已按此模板框架生成，可对照学习。</p>`;
+  highlightAll(el);
+  el.querySelector("[data-copy]").addEventListener("click", async (e) => {
+    const ok = await copyText(tpl.python);
+    e.target.textContent = ok ? "✅ 已复制" : "❌ 复制失败";
+    setTimeout(() => { e.target.textContent = "📋 复制模板"; }, 1500);
+  });
+}
+
+async function openTemplatesLibrary() {
+  const templates = await loadTemplates();
+  const list = $("templates-list");
+  list.innerHTML = "";
+  for (const [cat, tpl] of Object.entries(templates)) {
+    const div = document.createElement("div");
+    div.className = "tpl-card";
+    div.innerHTML = `
+      <div class="tpl-card-header">
+        <span class="tpl-cat">${escapeHtml(cat)}</span>
+        <span class="tpl-name">${escapeHtml(tpl.name)}</span>
+        <button class="btn btn-small tpl-copy" data-copy>📋 复制</button>
+      </div>
+      <div class="tpl-when">🎯 适用场景：${escapeHtml(tpl.when)}</div>
+      <pre><code class="language-python">${escapeHtml(tpl.python)}</code></pre>`;
+    div.querySelector("[data-copy]").addEventListener("click", async (e) => {
+      const ok = await copyText(tpl.python);
+      e.target.textContent = ok ? "✅ 已复制" : "❌";
+      setTimeout(() => { e.target.textContent = "📋 复制"; }, 1200);
+    });
+    list.appendChild(div);
+  }
+  highlightAll(list);
+  hide($("input-panel"));
+  hide($("progress-panel"));
+  hide($("result-panel"));
+  hide($("error-panel"));
+  show($("templates-panel"));
+}
+
 /* ---------- 标签页切换（懒渲染） ---------- */
 
 function switchTab(name) {
@@ -508,17 +682,23 @@ function switchTab(name) {
     if (name === "analysis") {
       renderAnalysisTab(state.record.analysis);
       state.renderedTabs[name] = true;
+    } else if (name === "walkthrough") {
+      renderWalkthroughTab(state.record.walkthrough);
+      state.renderedTabs[name] = true;
     } else if (name === "flowchart") {
       renderFlowchartTab(state.record.flowchart);
       state.renderedTabs[name] = true;
     } else if (name === "code") {
       renderCodeTab(state.record.code);
       state.renderedTabs[name] = true;
+    } else if (name === "template") {
+      renderTemplateTab(state.record.category || "其他");
+      state.renderedTabs[name] = true;
     }
   }
 }
 
-/* ---------- 历史记录 ---------- */
+/* ---------- 历史记录（分类筛选 + 分组） ---------- */
 
 function setActiveHistory(slug) {
   document.querySelectorAll(".history-item").forEach((li) => {
@@ -526,44 +706,90 @@ function setActiveHistory(slug) {
   });
 }
 
+function makeHistoryItem(item) {
+  const li = document.createElement("li");
+  li.className = "history-item";
+  li.dataset.slug = item.slug;
+  li.innerHTML = `
+    <div class="h-title">${escapeHtml(item.title)}</div>
+    <div class="h-meta">
+      <span>${DIFF_ZH[item.difficulty] || item.difficulty} · ${escapeHtml((item.updated_at || "").slice(0, 16))}</span>
+      <button class="h-del" title="删除记录">🗑</button>
+    </div>`;
+  li.querySelector(".h-title").addEventListener("click", () => loadRecord(item.slug));
+  li.querySelector(".h-del").addEventListener("click", async (e) => {
+    e.stopPropagation();
+    if (!confirm(`删除「${item.title}」的记录？`)) return;
+    await fetch("/api/history/" + encodeURIComponent(item.slug), { method: "DELETE" });
+    delete state.cache[item.slug];
+    loadHistory();
+  });
+  return li;
+}
+
+function renderHistoryList(items) {
+  const list = $("history-list");
+  const filter = state.categoryFilter;
+  const filtered = filter === "全部" ? items : items.filter((i) => (i.category || "其他") === filter);
+  if (!filtered.length) {
+    list.innerHTML = `<li class="history-empty">该分类下暂无记录</li>`;
+    return;
+  }
+  list.innerHTML = "";
+  if (filter === "全部") {
+    const groups = {};
+    for (const it of filtered) {
+      const c = it.category || "其他";
+      (groups[c] = groups[c] || []).push(it);
+    }
+    for (const [c, arr] of Object.entries(groups)) {
+      const header = document.createElement("li");
+      header.className = "history-group";
+      header.textContent = `${c} (${arr.length})`;
+      list.appendChild(header);
+      for (const item of arr) list.appendChild(makeHistoryItem(item));
+    }
+  } else {
+    for (const item of filtered) list.appendChild(makeHistoryItem(item));
+  }
+  if (currentSlug) setActiveHistory(currentSlug);
+}
+
+function renderCategoryFilter(items) {
+  const el = $("category-filter");
+  const counts = {};
+  for (const it of items) {
+    const c = it.category || "其他";
+    counts[c] = (counts[c] || 0) + 1;
+  }
+  const cats = Object.keys(counts).sort();
+  let html = `<button class="cat-chip${state.categoryFilter === "全部" ? " active" : ""}" data-cat="全部">全部 (${items.length})</button>`;
+  for (const c of cats) {
+    html += `<button class="cat-chip${state.categoryFilter === c ? " active" : ""}" data-cat="${escapeHtml(c)}">${escapeHtml(c)} (${counts[c]})</button>`;
+  }
+  el.innerHTML = html;
+  el.querySelectorAll(".cat-chip").forEach((b) => {
+    b.addEventListener("click", () => {
+      state.categoryFilter = b.dataset.cat;
+      el.querySelectorAll(".cat-chip").forEach((x) => x.classList.toggle("active", x === b));
+      renderHistoryList(state.historyItems);
+    });
+  });
+}
+
 async function loadHistory() {
   try {
     const resp = await fetch("/api/history");
     const data = await resp.json();
-    const list = $("history-list");
-    const items = data.items || [];
-    if (!items.length) {
-      list.innerHTML = `<li class="history-empty">暂无记录</li>`;
-      return;
-    }
-    list.innerHTML = "";
-    items.forEach((item) => {
-      const li = document.createElement("li");
-      li.className = "history-item";
-      li.dataset.slug = item.slug;
-      li.innerHTML = `
-        <div class="h-title">${escapeHtml(item.title)}</div>
-        <div class="h-meta">
-          <span>${DIFF_ZH[item.difficulty] || item.difficulty} · ${escapeHtml((item.updated_at || "").slice(0, 16))}</span>
-          <button class="h-del" title="删除记录">🗑</button>
-        </div>`;
-      li.querySelector(".h-title").addEventListener("click", () => loadRecord(item.slug));
-      li.querySelector(".h-del").addEventListener("click", async (e) => {
-        e.stopPropagation();
-        if (!confirm(`删除「${item.title}」的记录？`)) return;
-        await fetch("/api/history/" + encodeURIComponent(item.slug), { method: "DELETE" });
-        loadHistory();
-      });
-      list.appendChild(li);
-    });
-    if (currentSlug) setActiveHistory(currentSlug);
+    state.historyItems = data.items || [];
+    renderCategoryFilter(state.historyItems);
+    renderHistoryList(state.historyItems);
   } catch {
     /* 忽略历史加载失败 */
   }
 }
 
 async function loadRecord(slug) {
-  // 已缓存记录直接渲染，不再请求后端
   if (state.cache[slug]) {
     renderResult(state.cache[slug]);
     showResult();
@@ -579,6 +805,105 @@ async function loadRecord(slug) {
     window.history.replaceState(null, "", "?slug=" + encodeURIComponent(slug));
   } catch (err) {
     showError("加载记录失败：" + err.message);
+  }
+}
+
+/* ---------- Hot 100 批量生成 ---------- */
+
+async function initHot100(silent) {
+  const btn = $("btn-hot100-init");
+  if (!silent) {
+    btn.textContent = "⏳ 获取中…";
+    btn.disabled = true;
+  }
+  try {
+    const resp = await fetch("/api/hot100");
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || "获取失败");
+    state.hot100 = data.items || [];
+    const summary = $("hot100-summary");
+    summary.classList.remove("hidden");
+    summary.textContent = `✅ 已获取 ${state.hot100.length} 题（${data.fetched_at || ""}）`;
+    $("btn-batch-start").classList.remove("hidden");
+  } catch (err) {
+    if (!silent) alert("获取 Hot 100 失败：" + err.message);
+  } finally {
+    btn.textContent = "📥 获取 Hot 100 列表";
+    btn.disabled = false;
+  }
+}
+
+async function startBatch() {
+  if (!state.hot100) await initHot100(true);
+  if (!confirm("将批量生成 Hot 100 全部题目（每题约 30~60 秒，全部完成较久，可随时停止）。已生成过的题目会重新生成并更新。确定开始？")) return;
+  try {
+    const resp = await fetch("/api/batch/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ limit: 100 }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || "启动失败");
+    show($("btn-batch-stop"));
+    hide($("btn-batch-start"));
+    startBatchPolling();
+  } catch (err) {
+    alert("启动批量生成失败：" + err.message);
+  }
+}
+
+async function stopBatch() {
+  await fetch("/api/batch/stop", { method: "POST" });
+  stopBatchPolling();
+  updateBatchUI();
+}
+
+function startBatchPolling() {
+  stopBatchPolling();
+  state.batchTimer = setInterval(updateBatchUI, 3000);
+  updateBatchUI();
+}
+
+function stopBatchPolling() {
+  if (state.batchTimer) {
+    clearInterval(state.batchTimer);
+    state.batchTimer = null;
+  }
+}
+
+async function updateBatchUI() {
+  try {
+    const resp = await fetch("/api/batch");
+    const b = await resp.json();
+    const statusEl = $("batch-status");
+    statusEl.classList.remove("hidden");
+    if (b.status === "running") {
+      statusEl.textContent = `⏳ ${b.done}/${b.total} · 正在生成：${b.current ? (b.current.title_cn || b.current.slug) : "…"}`;
+    } else if (b.status === "done") {
+      statusEl.textContent = `✅ 完成：${b.done} 成功 / ${b.failed} 失败`;
+    } else if (b.status === "stopped") {
+      statusEl.textContent = `⏹ 已停止：完成 ${b.done} 题`;
+    } else {
+      statusEl.textContent = b.message || b.status;
+    }
+    const prog = $("batch-progress");
+    if (b.total > 0) {
+      prog.classList.remove("hidden");
+      $("batch-bar").style.width = Math.round(((b.done + b.failed) / b.total) * 100) + "%";
+    }
+    if (b.status === "running") {
+      show($("btn-batch-stop"));
+      hide($("btn-batch-start"));
+    } else {
+      hide($("btn-batch-stop"));
+      show($("btn-batch-start"));
+      if (b.status === "done" || b.status === "stopped") {
+        stopBatchPolling();
+        loadHistory();
+      }
+    }
+  } catch {
+    /* 忽略 */
   }
 }
 
@@ -618,6 +943,13 @@ function init() {
     if (currentSlug) submitGenerate("https://leetcode.com/problems/" + currentSlug + "/");
   });
 
+  $("btn-templates").addEventListener("click", openTemplatesLibrary);
+  $("btn-templates-back").addEventListener("click", showInputOnly);
+
+  $("btn-hot100-init").addEventListener("click", () => initHot100(false));
+  $("btn-batch-start").addEventListener("click", startBatch);
+  $("btn-batch-stop").addEventListener("click", stopBatch);
+
   $("btn-mermaid-copy").addEventListener("click", async (e) => {
     const ok = await copyText($("mermaid-source-pre").textContent || "");
     e.target.textContent = ok ? "✅ 已复制" : "❌ 复制失败";
@@ -636,6 +968,8 @@ function init() {
   });
 
   loadHistory();
+  initHot100(true); // 静默预取 Hot 100 列表
+  updateBatchUI();  // 若服务端有批量任务在跑，恢复进度显示
 
   // ?slug= 深链：直接加载历史记录
   const params = new URLSearchParams(location.search);
