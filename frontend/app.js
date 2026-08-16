@@ -687,7 +687,7 @@ function showError(msg) {
 
 /* ---------- 生成流程 ---------- */
 
-async function submitGenerate(url) {
+async function submitGenerate(url, force) {
   if (!requireVip()) return; // 未登录弹登录，未开通 VIP 弹购买
   currentJobId = null;
   showProgress();
@@ -695,9 +695,15 @@ async function submitGenerate(url) {
     const resp = await apiFetch("/api/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url }),
+      body: JSON.stringify({ url, force: !!force }),
     });
     const data = await resp.json();
+    if (resp.status === 409) {
+      // 已生成过：提示并停止
+      toast(data.detail || "该题目已生成过", true);
+      showInputOnly();
+      return;
+    }
     if (!resp.ok) throw new Error(data.detail || "请求失败");
     currentJobId = data.job_id;
     pollTimer = setInterval(pollJob, 1500);
@@ -1756,7 +1762,8 @@ async function startBatch() {
         });
         const data = await resp.json();
         if (!resp.ok) { toast(data.detail || "启动失败", true); return; }
-        if (data.invalid_count) toast(`有 ${data.invalid_count} 个链接无法解析（需包含 /problems/ 路径），已跳过`, true);
+        if (data.invalid_count) toast(`有 ${data.invalid_count} 个链接无法解析，已跳过`, true);
+        if (data.skipped) toast(`已跳过 ${data.skipped} 道已生成过的题目`, true);
         startBatchPolling();
       } catch (err) {
         toast("启动批量生成失败：" + err.message, true);
@@ -1876,7 +1883,7 @@ function init() {
   $("btn-regen").addEventListener("click", () => {
     if (!requireVip()) return;
     if (currentSlug && !(state.record && state.record.shared)) {
-      submitGenerate("https://leetcode.cn/problems/" + currentSlug + "/");
+      submitGenerate("https://leetcode.cn/problems/" + currentSlug + "/", true);
     }
   });
 

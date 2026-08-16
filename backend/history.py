@@ -57,6 +57,16 @@ def list_records(user_id: Optional[int]) -> list[dict]:
     return [_summary_from_row(r) for r in rows]
 
 
+def user_has_record(user_id: int, slug: str) -> bool:
+    """判断用户是否已生成过该题目（只看用户自己的记录，共享目录不算重复）。"""
+    row = query(
+        "SELECT 1 FROM records WHERE user_id = %s AND slug = %s",
+        (user_id, slug),
+        fetch="one",
+    )
+    return row is not None
+
+
 def get_record(user_id: Optional[int], slug: str) -> Optional[dict]:
     if user_id is None:
         row = query(

@@ -321,6 +321,7 @@ _executor = ThreadPoolExecutor(max_workers=4)
 
 class GenerateRequest(BaseModel):
     url: str
+    force: bool = False  # True=重新生成（跳过查重）
 
 
 def _record_from_result(result: dict) -> dict:
@@ -370,6 +371,14 @@ async def generate(req: GenerateRequest, user: dict = Depends(get_current_user))
     slug = extract_slug(url)
     if not slug:
         raise HTTPException(status_code=400, detail="无法解析题目链接，请检查格式（需包含 /problems/ 路径）")
+    # 查重：已生成过的题目提示并停止（重新生成按钮会带 force=true 跳过）
+    if not req.force and history.user_has_record(user["id"], slug):
+        rec = history.get_record(user["id"], slug)
+        title = rec["title"] if rec else slug
+        raise HTTPException(
+            status_code=409,
+            detail=f"「{title}」已生成过，请勿重复生成（如需更新内容请点击「重新生成」）",
+        )
     # 计费：普通 1 元/题，VIP 0.1 元/题；每日 200 题上限
     record_generation(user, [slug])
 
@@ -468,6 +477,17 @@ async def batch_start(req: BatchStartRequest, user: dict = Depends(get_current_u
             queue.append({"url": url, "slug": slug, "group": (req.group or "").strip(), "user_id": user["id"]})
         if not queue:
             raise HTTPException(status_code=400, detail="没有有效的题目链接（需包含 /problems/ 路径）")
+        # 过滤已生成过的题目（避免重复扣费）
+        existed = query(
+            "SELECT slug FROM records WHERE user_id = %s AND slug = ANY(%s)",
+            [user["id"], [item["slug"] for item in queue]],
+            fetch="all",
+        )
+        existed_slugs = {r["slug"] for r in existed}
+        queue = [item for item in queue if item["slug"] not in existed_slugs]
+        skipped = len(existed_slugs)
+        if not queue:
+            raise HTTPException(status_code=400, detail="所选题目都已生成过，无需重复生成")
         # 计费：普通 1 元/题，VIP 0.1 元/题；每日 200 题上限（按题数占用）
         record_generation(user, [item["slug"] for item in queue])
         _batch.update(
@@ -476,7 +496,7 @@ async def batch_start(req: BatchStartRequest, user: dict = Depends(get_current_u
         )
     _batch_thread = threading.Thread(target=_batch_worker, daemon=True)
     _batch_thread.start()
-    return {"status": "running", "total": len(queue), "invalid_count": len(invalid)}
+    return {"status": "running", "total": len(queue), "invalid_count": len(invalid), "skipped": skipped}
 
 
 @app.post("/api/batch/stop")
