@@ -178,6 +178,17 @@ async def vip_alipay_notify(request: Request) -> str:
     return "success"
 
 
+@app.post("/api/vip/payjs/notify")
+async def vip_payjs_notify(request: Request) -> str:
+    """PayJS 异步通知（个人支付宝当面付）：验签后入账。"""
+    form = dict(await request.form())
+    if not vip.verify_payjs_notify(form):
+        return "fail"
+    if form.get("return_code") == "1" and form.get("out_trade_no"):
+        vip.mark_paid(form["out_trade_no"])
+    return "success"
+
+
 # ---------------- 生成任务（后台执行，前端轮询进度） ----------------
 
 jobs: dict[str, dict] = {}

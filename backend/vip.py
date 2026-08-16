@@ -29,16 +29,24 @@ ALIPAY_NOTIFY_URL = os.getenv("ALIPAY_NOTIFY_URL", "")
 ALIPAY_RETURN_URL = os.getenv("ALIPAY_RETURN_URL", "")
 APP_BASE_URL = os.getenv("APP_BASE_URL", "http://127.0.0.1:8001")
 
+# PayJS（个人支付宝当面付，payjs.cn）
+PAYJS_MCHID = os.getenv("PAYJS_MCHID", "")
+PAYJS_KEY = os.getenv("PAYJS_KEY", "")
+PAYJS_NOTIFY_URL = os.getenv("PAYJS_NOTIFY_URL", "") or f"{APP_BASE_URL}/api/vip/payjs/notify"
+
 
 def is_alipay_configured() -> bool:
     return bool(ALIPAY_APP_ID and ALIPAY_PRIVATE_KEY)
 
 
+def is_payjs_configured() -> bool:
+    return bool(PAYJS_MCHID and PAYJS_KEY)
+
+
 def create_order(user_id: int, plan: str, method: str = "page"):
     """创建订单，返回 (order_dict|None, 错误信息)。
 
-    method: "page" 电脑网站支付跳转 / "qr" 扫码支付（alipay.trade.precreate）
-    未配置支付宝时为开发模式：返回模拟支付地址/标记。
+    支付通道优先级：PayJS（个人当面付扫码）> 支付宝官方（page/qr）> 开发模式模拟。
     """
     plan_info = PLANS.get(plan)
     if not plan_info:
@@ -48,31 +56,33 @@ def create_order(user_id: int, plan: str, method: str = "page"):
         "INSERT INTO vip_orders (user_id, order_no, plan, amount, status) VALUES (%s,%s,%s,%s,'pending')",
         (user_id, order_no, plan, plan_info["amount"]),
     )
-    if not is_alipay_configured():
-        # 开发模式：模拟支付
-        pay_url = f"{APP_BASE_URL}/api/vip/mock-pay?order_no={order_no}"
-        return {
-            "order_no": order_no,
-            "pay_url": pay_url,
-            "qr_code": None,
-            "dev": True,
-            "amount": plan_info["amount"],
-            "name": plan_info["name"],
-            "desc": plan_info["desc"],
-        }, None
-    if method == "qr":
-        qr_code = _precreate(order_no, plan_info["amount"])
-        return {
-            "order_no": order_no,
-            "pay_url": "",
-            "qr_code": qr_code,
-            "dev": False,
-            "amount": plan_info["amount"],
-            "name": plan_info["name"],
-            "desc": plan_info["desc"],
-        }, None
-    pay_url = _build_alipay_url(order_no, plan_info["amount"])
-    return {"order_no": order_no, "pay_url": pay_url, "qr_code": None, "dev": False, "amount": plan_info["amount"], "name": plan_info["name"], "desc": plan_info["desc"]}, None
+    base = {
+        "order_no": order_no,
+        "pay_url": "",
+        "qr_code": None,
+        "dev": False,
+        "provider": "",
+        "amount": plan_info["amount"],
+        "name": plan_info["name"],
+        "desc": plan_info["desc"],
+    }
+    # 1) PayJS：个人支付宝扫码（当面付）
+    if is_payjs_configured():
+        qr = _payjs_native(order_no, plan_info["amount"])
+        base.update({"qr_code": qr, "provider": "payjs"})
+        return base, None
+    # 2) 支付宝官方
+    if is_alipay_configured():
+        if method == "qr":
+            base.update({"qr_code": _precreate(order_no, plan_info["amount"]), "provider": "alipay"})
+            return base, None
+        base.update({"pay_url": _build_alipay_url(order_no, plan_info["amount"]), "provider": "alipay"})
+        return base, None
+    # 3) 开发模式：模拟支付
+    base.update(
+        {"dev": True, "pay_url": f"{APP_BASE_URL}/api/vip/mock-pay?order_no={order_no}", "provider": "dev"}
+    )
+    return base, None
 
 
 def _precreate(order_no: str, amount: str) -> str:
@@ -129,6 +139,47 @@ def _build_alipay_url(order_no: str, amount: str) -> str:
         notify_url=ALIPAY_NOTIFY_URL,
     )
     return f"https://openapi.alipay.com/gateway.do?{order_string}"
+
+
+# ---------------- PayJS（个人支付宝当面付扫码） ----------------
+
+def _payjs_sign(params: dict) -> str:
+    """PayJS 签名：参数按 key 升序拼接 key=value，末尾加 &key=KEY，MD5 大写。"""
+    import hashlib
+
+    items = sorted(params.items())
+    raw = "&".join(f"{k}={v}" for k, v in items) + f"&key={PAYJS_KEY}"
+    return hashlib.md5(raw.encode("utf-8")).hexdigest().upper()
+
+
+def _payjs_native(order_no: str, amount: str) -> str:
+    """调用 PayJS /api/native 创建支付宝当面付订单，返回二维码串。"""
+    import requests
+
+    total_fee = str(int(round(float(amount) * 100)))  # 元 -> 分
+    params = {
+        "mchid": PAYJS_MCHID,
+        "total_fee": total_fee,
+        "out_trade_no": order_no,
+        "body": "力扣算法学习助手 VIP 会员",
+        "type": "1",  # 1=支付宝
+        "notify_url": PAYJS_NOTIFY_URL,
+    }
+    params["sign"] = _payjs_sign(params)
+    resp = requests.post("https://payjs.cn/api/native", data=params, timeout=20)
+    data = resp.json()
+    if data.get("return_code") == 1 and data.get("qrcode"):
+        return data["qrcode"]
+    raise RuntimeError(f"PayJS 下单失败: {data}")
+
+
+def verify_payjs_notify(form: dict) -> bool:
+    """校验 PayJS 异步通知签名。"""
+    form = dict(form)
+    sign = form.pop("sign", "")
+    if not sign:
+        return False
+    return _payjs_sign(form) == sign
 
 
 def mark_paid(order_no: str) -> bool:
