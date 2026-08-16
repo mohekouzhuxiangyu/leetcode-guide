@@ -92,6 +92,46 @@ def user_has_record(user_id: int, slug: str) -> bool:
     return row is not None
 
 
+def find_any_record(slug: str) -> Optional[dict]:
+    """全系统查找题目记录（共享目录优先，其次最近生成的任一用户记录）。
+
+    用于跨用户复用：用户 B 生成某题时，若系统里已有该题（共享或用户 A 生成过），
+    直接复用其题解，不重复生成、不扣费。
+    """
+    row = query(
+        """SELECT * FROM records WHERE slug = %s
+           ORDER BY (user_id IS NULL) DESC, updated_at DESC LIMIT 1""",
+        (slug,),
+        fetch="one",
+    )
+    if row is None:
+        return None
+    return {
+        "slug": row["slug"],
+        "url": row["url"] or f"https://leetcode.cn/problems/{row['slug']}/",
+        "title": row["title"],
+        "difficulty": row["difficulty"],
+        "tags": row["tags"] or [],
+        "category": row["category"],
+        "problem": row["problem"] or {},
+        "problem_zh": row["problem_zh"] or "",
+        "analysis": row["analysis"] or "",
+        "walkthrough": row["walkthrough"] or "",
+        "flowchart": row["flowchart"] or "",
+        "code": row["code"] or {},
+        "errors": row["errors"] or {},
+    }
+
+
+def copy_record_to_user(slug: str, user_id: int) -> bool:
+    """把系统中已有的题解复制到指定用户名下（复用，不生成、不扣费）。"""
+    rec = find_any_record(slug)
+    if rec is None:
+        return False
+    upsert_record(user_id, slug, rec)
+    return True
+
+
 def get_record(user_id: Optional[int], slug: str) -> Optional[dict]:
     if user_id is None:
         row = query(

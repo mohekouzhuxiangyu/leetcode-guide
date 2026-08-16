@@ -484,7 +484,7 @@ async def generate(req: GenerateRequest, user: dict = Depends(get_current_user))
     slug = extract_slug(url)
     if not slug:
         raise HTTPException(status_code=400, detail="无法解析题目链接，请检查格式（需包含 /problems/ 路径）")
-    # 查重：已生成过的题目提示并停止（重新生成按钮会带 force=true 跳过）
+    # 自己已生成过：提示并停止（重新生成按钮会带 force=true 跳过）
     if not req.force and history.user_has_record(user["id"], slug):
         rec = history.get_record(user["id"], slug)
         title = rec["title"] if rec else slug
@@ -492,7 +492,11 @@ async def generate(req: GenerateRequest, user: dict = Depends(get_current_user))
             status_code=409,
             detail=f"「{title}」已生成过，请勿重复生成（如需更新内容请点击「重新生成」）",
         )
-    # 计费：普通 1 元/题，VIP 0.1 元/题；每日 200 题上限
+    # 系统内已有该题题解（共享目录或其他用户生成过）：直接复用，不重复生成、不扣费
+    if not req.force and history.find_any_record(slug):
+        history.copy_record_to_user(slug, user["id"])
+        return {"job_id": None, "slug": slug, "reused": True}
+    # 全新生成：计费（普通 1 元/题，VIP 0.1 元/题；每日 200 题上限）
     record_generation(user, [slug])
 
     job_id = uuid.uuid4().hex
@@ -599,20 +603,31 @@ async def batch_start(req: BatchStartRequest, user: dict = Depends(get_current_u
             if not history.user_has_group(user["id"], target_group) and history.user_group_count(user["id"]) >= limit:
                 raise HTTPException(status_code=400, detail=f"分组数量已达上限（{limit} 个）")
         # 分组规则：组内不重复；不同分组可重复但复用同一份生成结果（不重复生成、不扣费）
-        existed = query(
+        # 全系统已存在的 slug（共享目录或任一用户生成过）
+        sys_rows = query(
+            "SELECT slug FROM records WHERE slug = ANY(%s)",
+            [[item["slug"] for item in queue]],
+            fetch="all",
+        )
+        sys_slugs = {r["slug"] for r in sys_rows}
+        # 用户自己的记录
+        own_rows = query(
             "SELECT slug FROM records WHERE user_id = %s AND slug = ANY(%s)",
             [user["id"], [item["slug"] for item in queue]],
             fetch="all",
         )
-        existed_slugs = {r["slug"] for r in existed}
+        own_slugs = {r["slug"] for r in own_rows}
         in_group_slugs = history.slugs_in_group(user["id"], target_group, [item["slug"] for item in queue]) if target_group else set()
-        to_generate = [item for item in queue if item["slug"] not in existed_slugs]
-        to_reuse = [item for item in queue if item["slug"] in existed_slugs and item["slug"] not in in_group_slugs]
+        to_generate = [item for item in queue if item["slug"] not in sys_slugs]
+        to_reuse_own = [item for item in queue if item["slug"] in own_slugs and item["slug"] not in in_group_slugs]
+        to_reuse_cross = [item for item in queue if item["slug"] in sys_slugs and item["slug"] not in own_slugs and item["slug"] not in in_group_slugs]
         skipped = len([item for item in queue if item["slug"] in in_group_slugs])
-        # 复用：把已生成的记录直接加入目标分组（不生成、不扣费）
-        for item in to_reuse:
+        # 复用：加入目标分组；跨用户复用时把系统中已有题解复制到该用户名下
+        for item in to_reuse_own + to_reuse_cross:
             history.add_to_group(user["id"], item["slug"], target_group)
-        reused = len(to_reuse)
+        for item in to_reuse_cross:
+            history.copy_record_to_user(item["slug"], user["id"])
+        reused = len(to_reuse_own) + len(to_reuse_cross)
         if not to_generate:
             # 全部为复用/已在组内：直接返回完成
             _batch.update(
