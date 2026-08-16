@@ -519,9 +519,14 @@ function renderWalkthroughTab(raw) {
   wt.arrayLen = 0;
   wt.prevData = null;
   wt.extraKey = "";
+  // 预收集所有步骤中出现过的指针名，保证指针 DOM 一次建全
+  wt.ptrNames = [];
   for (const s of steps) {
     const arr = (s.data || {}).array;
     if (Array.isArray(arr)) wt.arrayLen = Math.max(wt.arrayLen, arr.length);
+    for (const name of Object.keys((s.data || {}).pointers || {})) {
+      if (!wt.ptrNames.includes(name)) wt.ptrNames.push(name);
+    }
   }
   container.innerHTML = `
     <div class="wt-tip">🎬 逐步动画：点击「下一步」观察指针滑动与格子变化，或自动播放</div>
@@ -593,7 +598,7 @@ function renderWtVisual(data, prev) {
       const ptrLayer = document.createElement("div");
       ptrLayer.className = "wt-ptr-layer";
       vis.appendChild(ptrLayer);
-      for (const name of Object.keys(data.pointers || {})) {
+      for (const name of wt.ptrNames) {
         const p = document.createElement("div");
         p.className = "wt-ptr";
         p.dataset.ptr = name;
