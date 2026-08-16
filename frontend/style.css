@@ -465,12 +465,12 @@ html { overflow-y: scroll; }
 
 /* ---------- 新增：二级按钮 / 分类筛选 / 批量生成 / 动画演示 / 模板库 ---------- */
 .btn-secondary {
-  background: #334155;
-  color: var(--text);
+  background: var(--btn-secondary-bg, #334155);
+  color: var(--btn-secondary-text, #e2e8f0);
   font-weight: 600;
   margin-bottom: 20px;
 }
-.btn-secondary:hover { background: #475569; }
+.btn-secondary:hover { background: var(--btn-secondary-hover, #475569); }
 .btn-start { background: #16a34a; color: #fff; font-weight: 600; margin-bottom: 6px; }
 .btn-start:hover { background: #22c55e; }
 .btn-stop { background: #b91c1c; color: #fff; font-weight: 600; margin-bottom: 6px; }
@@ -887,6 +887,9 @@ mark {
   --green: #16a34a;
   --yellow: #d97706;
   --red: #dc2626;
+  --btn-secondary-bg: #cbd5e1;
+  --btn-secondary-text: #1e293b;
+  --btn-secondary-hover: #94a3b8;
 }
 [data-theme="light"] .wt-cell { background: #e2e8f0; border-color: #cbd5e1; }
 [data-theme="light"] .wt-map th { background: #e2e8f0; }
