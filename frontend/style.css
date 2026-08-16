@@ -419,7 +419,7 @@ html { overflow-y: scroll; }
 .code-lang-btn.active { border-color: var(--accent); color: var(--accent); }
 .code-block { position: relative; margin-bottom: 0; }
 .code-block pre {
-  background: var(--bg-input);
+  background: #0d1117;
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 14px;
@@ -429,6 +429,8 @@ html { overflow-y: scroll; }
   max-height: 560px;
   overflow-y: auto;
 }
+.code-block pre code { color: #e6edf3; font-family: "SF Mono", Menlo, Consolas, monospace; }
+.code-block pre code.hljs { background: transparent; color: inherit; }
 .code-copy {
   position: absolute;
   top: 8px;
@@ -691,7 +693,7 @@ html { overflow-y: scroll; }
 .templates-header h2 { font-size: 22px; }
 .templates-list { display: flex; flex-direction: column; gap: 18px; margin-top: 16px; }
 .tpl-card {
-  background: var(--bg-input);
+  background: var(--bg-panel);
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 14px 16px;
@@ -706,10 +708,13 @@ html { overflow-y: scroll; }
   font-size: 13px;
   font-weight: 700;
 }
-.tpl-name { font-weight: 600; flex: 1; }
+.tpl-name { font-weight: 600; flex: 1; color: var(--text); }
 .tpl-copy { margin-left: auto; }
 .tpl-when { font-size: 13px; color: var(--text-dim); margin-bottom: 8px; }
+/* 模板代码区：固定深色高对比，暗夜/白日主题下都可读 */
 .tpl-card pre {
+  background: #0d1117;
+  border: 1px solid #30363d;
   overflow-x: auto;
   border-radius: 8px;
   font-size: 13px;
@@ -717,7 +722,13 @@ html { overflow-y: scroll; }
   max-height: 420px;
   overflow-y: auto;
 }
+.tpl-card pre code {
+  color: #e6edf3;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+}
+.tpl-card pre code.hljs { background: transparent; color: inherit; }
 .tpl-header { margin-bottom: 12px; }
+.tpl-header h3 { color: var(--text); }
 .tpl-header h3 { font-size: 17px; margin-bottom: 6px; }
 
 /* ---------- 历史题目搜索 ---------- */
