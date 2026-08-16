@@ -24,6 +24,8 @@ const state = {
   groupFilter: "全部",
   difficultyFilter: "全部",
   searchQuery: "",
+  tplFilter: "全部",
+  tplQuery: "",
   groups: [],
   historyItems: [],
   templates: null,
@@ -1138,9 +1140,53 @@ async function renderTemplateTab(category) {
 
 async function openTemplatesLibrary() {
   const templates = await loadTemplates();
+  renderTplTags(templates);
+  renderTemplatesList(templates);
+  hide($("input-panel"));
+  hide($("progress-panel"));
+  hide($("result-panel"));
+  hide($("error-panel"));
+  show($("templates-panel"));
+}
+
+/* 模板库顶部分类标签 */
+function renderTplTags(templates) {
+  const el = $("tpl-tags");
+  if (!el) return;
+  const keys = Object.keys(templates);
+  let html = `<button class="cat-chip${state.tplFilter === "全部" ? " active" : ""}" data-tpl="__all__">全部 (${keys.length})</button>`;
+  for (const k of keys) {
+    html += `<button class="cat-chip${state.tplFilter === k ? " active" : ""}" data-tpl="${escapeHtml(k)}">${escapeHtml(k)}</button>`;
+  }
+  el.innerHTML = html;
+  el.querySelectorAll(".cat-chip").forEach((b) => {
+    b.addEventListener("click", () => {
+      state.tplFilter = b.dataset.tpl === "__all__" ? "全部" : b.dataset.tpl;
+      el.querySelectorAll(".cat-chip").forEach((x) => x.classList.toggle("active", x === b));
+      renderTemplatesList(templates);
+    });
+  });
+}
+
+/* 模板列表：按标签 + 搜索词过滤渲染 */
+function renderTemplatesList(templates) {
   const list = $("templates-list");
+  if (!list) return;
+  const q = (state.tplQuery || "").trim().toLowerCase();
+  const entries = Object.entries(templates).filter(([cat, tpl]) => {
+    if (state.tplFilter !== "全部" && cat !== state.tplFilter) return false;
+    if (q) {
+      const hay = `${cat} ${tpl.name || ""} ${tpl.when || ""} ${tpl.python || ""}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  if (!entries.length) {
+    list.innerHTML = `<div class="problem-empty" style="padding:30px;text-align:center;">没有匹配的模板</div>`;
+    return;
+  }
   list.innerHTML = "";
-  for (const [cat, tpl] of Object.entries(templates)) {
+  for (const [cat, tpl] of entries) {
     const div = document.createElement("div");
     div.className = "tpl-card";
     div.innerHTML = `
@@ -1159,11 +1205,6 @@ async function openTemplatesLibrary() {
     list.appendChild(div);
   }
   highlightAll(list);
-  hide($("input-panel"));
-  hide($("progress-panel"));
-  hide($("result-panel"));
-  hide($("error-panel"));
-  show($("templates-panel"));
 }
 
 /* ---------- 题目心得（Markdown） ---------- */
@@ -1713,6 +1754,11 @@ function init() {
 
   $("btn-templates").addEventListener("click", openTemplatesLibrary);
   $("btn-templates-back").addEventListener("click", showInputOnly);
+  // 模板库搜索
+  $("tpl-search").addEventListener("input", () => {
+    state.tplQuery = $("tpl-search").value;
+    if (state.templates) renderTemplatesList(state.templates);
+  });
 
   // 分组
   $("btn-add-group").addEventListener("click", createGroup);

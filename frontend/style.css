@@ -1046,3 +1046,20 @@ mark {
 
 /* 小节标题内的说明文字 */
 .sec-hint { font-size: 12px; font-weight: 400; color: var(--text-dim); }
+
+/* ---------- 模板库搜索 ---------- */
+.templates-search { margin-bottom: 12px; }
+.templates-search input {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 14px;
+  padding: 10px 14px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.templates-search input:focus { border-color: var(--accent); }
+#tpl-tags { margin-bottom: 16px; }
