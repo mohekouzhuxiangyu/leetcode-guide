@@ -158,6 +158,7 @@ async function apiFetch(path, opts = {}) {
 function handleAuthExpired() {
   setToken("");
   auth.user = null;
+  state.templates = null;
   renderUserArea();
   toast("登录已过期，请重新登录", true);
 }
@@ -360,6 +361,7 @@ function showLoginModal() {
       setToken(data.token);
       auth.user = data.user;
       closeModal();
+      state.templates = null; // 登录后重新拉取（含自定义模板）
       renderUserArea();
       loadHistory();
       loadGroups();
@@ -437,6 +439,7 @@ async function logoutUser() {
   renderUserArea();
   state.historyItems = [];
   state.groups = [];
+  state.templates = null; // 退出后回退为内置模板
   renderGroupFilter();
   renderHistoryList([]);
   hide($("batch-panel"));
@@ -1199,31 +1202,40 @@ async function loadTemplates() {
   if (state.templates) return state.templates;
   try {
     const resp = await fetch("/api/templates");
-    state.templates = (await resp.json()).templates || {};
+    state.templates = (await resp.json()).templates || [];
   } catch {
-    state.templates = {};
+    state.templates = [];
   }
   return state.templates;
+}
+
+/* 取某分类的模板：优先用户自定义（后面的覆盖前面的内置模板） */
+function templateForCategory(templates, category) {
+  let found = null;
+  for (const t of templates || []) {
+    if (t.category === category) found = t;
+  }
+  return found;
 }
 
 async function renderTemplateTab(category) {
   const el = $("tab-template");
   const templates = await loadTemplates();
-  const tpl = templates[category];
+  const tpl = templateForCategory(templates, category);
   if (!tpl) {
     el.innerHTML = `<p class="problem-empty">「${escapeHtml(category)}」暂无固定模板，可查看「算法模板库」。</p>`;
     return;
   }
   el.innerHTML = `
     <div class="tpl-header">
-      <h3>${escapeHtml(tpl.name)}</h3>
+      <h3>${escapeHtml(tpl.name)}${tpl.builtin ? "" : ' <span class="tpl-badge">自定义</span>'}</h3>
       <span class="tpl-when">🎯 适用场景：${escapeHtml(tpl.when)}</span>
     </div>
     <div class="code-block">
       <button class="code-copy" data-copy>📋 复制模板</button>
       <pre><code class="language-python">${escapeHtml(tpl.python)}</code></pre>
     </div>
-    <p class="hint">💡 本题的「代码」标签页已按此模板框架生成，可对照学习。</p>`;
+    <p class="hint">💡 本题的「代码」标签页已按此模板框架生成，可对照学习。${tpl.builtin ? "" : "（当前使用你的自定义模板）"}</p>`;
   highlightAll(el);
   el.querySelector("[data-copy]").addEventListener("click", async (e) => {
     const ok = await copyText(tpl.python);
@@ -1243,11 +1255,14 @@ async function openTemplatesLibrary() {
   show($("templates-panel"));
 }
 
-/* 模板库顶部分类标签 */
+/* 模板库顶部分类标签（内置 + 用户自定义分类去重） */
 function renderTplTags(templates) {
   const el = $("tpl-tags");
   if (!el) return;
-  const keys = Object.keys(templates);
+  const keys = [];
+  for (const t of templates || []) {
+    if (!keys.includes(t.category)) keys.push(t.category);
+  }
   let html = `<button class="cat-chip${state.tplFilter === "全部" ? " active" : ""}" data-tpl="__all__">全部 (${keys.length})</button>`;
   for (const k of keys) {
     html += `<button class="cat-chip${state.tplFilter === k ? " active" : ""}" data-tpl="${escapeHtml(k)}">${escapeHtml(k)}</button>`;
@@ -1262,15 +1277,15 @@ function renderTplTags(templates) {
   });
 }
 
-/* 模板列表：按标签 + 搜索词过滤渲染 */
+/* 模板列表：按标签 + 搜索词过滤渲染；自定义模板带 编辑/删除 */
 function renderTemplatesList(templates) {
   const list = $("templates-list");
   if (!list) return;
   const q = (state.tplQuery || "").trim().toLowerCase();
-  const entries = Object.entries(templates).filter(([cat, tpl]) => {
-    if (state.tplFilter !== "全部" && cat !== state.tplFilter) return false;
+  const entries = (templates || []).filter((tpl) => {
+    if (state.tplFilter !== "全部" && tpl.category !== state.tplFilter) return false;
     if (q) {
-      const hay = `${cat} ${tpl.name || ""} ${tpl.when || ""} ${tpl.python || ""}`.toLowerCase();
+      const hay = `${tpl.category} ${tpl.name || ""} ${tpl.when || ""} ${tpl.python || ""}`.toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
@@ -1280,14 +1295,19 @@ function renderTemplatesList(templates) {
     return;
   }
   list.innerHTML = "";
-  for (const [cat, tpl] of entries) {
+  for (const tpl of entries) {
     const div = document.createElement("div");
     div.className = "tpl-card";
+    const actions = `
+      <button class="btn btn-small tpl-copy" data-copy>📋 复制</button>
+      ${tpl.builtin ? "" : `
+      <button class="btn btn-small tpl-edit" data-edit="${tpl.id}">✏️ 编辑</button>
+      <button class="btn btn-small btn-stop tpl-del" data-del="${tpl.id}">🗑 删除</button>`}`;
     div.innerHTML = `
       <div class="tpl-card-header">
-        <span class="tpl-cat">${escapeHtml(cat)}</span>
-        <span class="tpl-name">${escapeHtml(tpl.name)}</span>
-        <button class="btn btn-small tpl-copy" data-copy>📋 复制</button>
+        <span class="tpl-cat">${escapeHtml(tpl.category)}</span>
+        <span class="tpl-name">${escapeHtml(tpl.name)}${tpl.builtin ? "" : '<span class="tpl-badge">自定义</span>'}</span>
+        <span class="tpl-actions">${actions}</span>
       </div>
       <div class="tpl-when">🎯 适用场景：${escapeHtml(tpl.when)}</div>
       <pre><code class="language-python">${escapeHtml(tpl.python)}</code></pre>`;
@@ -1296,9 +1316,95 @@ function renderTemplatesList(templates) {
       e.target.textContent = ok ? "✅ 已复制" : "❌";
       setTimeout(() => { e.target.textContent = "📋 复制"; }, 1200);
     });
+    const editBtn = div.querySelector("[data-edit]");
+    if (editBtn) editBtn.addEventListener("click", () => showTemplateEditor(tpl));
+    const delBtn = div.querySelector("[data-del]");
+    if (delBtn) delBtn.addEventListener("click", () => deleteTemplate(tpl));
     list.appendChild(div);
   }
   highlightAll(list);
+}
+
+/* ---------- 自定义模板（增删改，按用户独立） ---------- */
+
+function templateEditorForm(tpl) {
+  const cats = [];
+  for (const t of state.templates || []) {
+    if (!cats.includes(t.category)) cats.push(t.category);
+  }
+  const datalist = cats.map((c) => `<option value="${escapeHtml(c)}">`).join("");
+  const t = tpl || { category: "", name: "", when: "", python: "" };
+  return `<div class="modal-form">
+    <label class="modal-label">算法分类（建议使用内置分类名，如 哈希表 / 动态规划 / 滑动窗口）</label>
+    <input id="tpl-category" class="modal-input" type="text" list="tpl-cat-list" spellcheck="false" value="${escapeHtml(t.category)}" placeholder="例如：动态规划" />
+    <datalist id="tpl-cat-list">${datalist}</datalist>
+    <label class="modal-label">模板名</label>
+    <input id="tpl-name" class="modal-input" type="text" spellcheck="false" value="${escapeHtml(t.name)}" placeholder="例如：动态规划（1D / 2D）" />
+    <label class="modal-label">适用场景</label>
+    <input id="tpl-when" class="modal-input" type="text" spellcheck="false" value="${escapeHtml(t.when)}" placeholder="什么时候用这个模板" />
+    <label class="modal-label">Python 代码骨架</label>
+    <textarea id="tpl-python" class="modal-input tpl-code-input" rows="12" spellcheck="false" placeholder="class Solution: ...">${escapeHtml(t.python)}</textarea>
+  </div>`;
+}
+
+function showTemplateEditor(tpl) {
+  if (!auth.user) { toast("请先登录后再管理自己的模板", true); showLoginModal(); return; }
+  const isEdit = !!tpl && !tpl.builtin;
+  openModal(
+    isEdit ? "✏️ 编辑模板" : "➕ 新建模板",
+    templateEditorForm(tpl),
+    `<button class="btn btn-small" id="modal-cancel">取消</button>
+     <button class="btn btn-primary btn-small" id="modal-save">保存</button>`
+  );
+  $("modal-cancel").addEventListener("click", closeModal);
+  $("modal-save").addEventListener("click", async () => {
+    const body = {
+      category: $("tpl-category").value.trim(),
+      name: $("tpl-name").value.trim(),
+      when: $("tpl-when").value.trim(),
+      python: $("tpl-python").value,
+    };
+    if (!body.category || !body.name) { modalError("请填写分类与模板名"); return; }
+    try {
+      const resp = await apiFetch(isEdit ? `/api/templates/${tpl.id}` : "/api/templates", {
+        method: isEdit ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await resp.json();
+      if (!resp.ok) { modalError(data.detail || "保存失败"); return; }
+      closeModal();
+      state.templates = null; // 强制重新拉取
+      await loadTemplates();
+      renderTplTags(state.templates);
+      renderTemplatesList(state.templates);
+      toast(isEdit ? "模板已更新" : "模板已创建");
+    } catch (err) {
+      modalError("保存失败：" + err.message);
+    }
+  });
+}
+
+function deleteTemplate(tpl) {
+  if (!auth.user) { toast("请先登录", true); showLoginModal(); return; }
+  confirmAction(
+    "删除模板",
+    `确定删除模板「${escapeHtml(tpl.name)}」（分类：${escapeHtml(tpl.category)}）？删除后该分类将回退使用内置模板。`,
+    async () => {
+      try {
+        const resp = await apiFetch(`/api/templates/${tpl.id}`, { method: "DELETE" });
+        const data = await resp.json();
+        if (!resp.ok) { toast(data.detail || "删除失败", true); return; }
+        state.templates = null;
+        await loadTemplates();
+        renderTplTags(state.templates);
+        renderTemplatesList(state.templates);
+        toast("模板已删除");
+      } catch (err) {
+        toast("删除失败：" + err.message, true);
+      }
+    }
+  );
 }
 
 /* ---------- 题目心得（Markdown） ---------- */
@@ -1902,6 +2008,7 @@ function init() {
   $("btn-templates").addEventListener("click", openTemplatesLibrary);
   $("btn-templates-back").addEventListener("click", showInputOnly);
   $("btn-vip-back").addEventListener("click", showInputOnly);
+  $("btn-tpl-new").addEventListener("click", () => showTemplateEditor(null));
   bindVipPanel();
   // 模板库搜索
   $("tpl-search").addEventListener("input", () => {
@@ -1925,6 +2032,8 @@ function init() {
 
   // 分组
   $("btn-add-group").addEventListener("click", createGroup);
+  // 批量生成页：直接新建分组（创建后自动选中，与 createGroup 同步下拉）
+  $("btn-batch-add-group").addEventListener("click", createGroup);
   // 输入区标签页：单条生成 / 批量生成
   document.querySelectorAll(".input-tab").forEach((t) => {
     t.addEventListener("click", () => {

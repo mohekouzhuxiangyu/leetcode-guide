@@ -7,7 +7,7 @@
   <link rel="icon" href="/assets/icon.png" />
   <!-- 代码高亮主题：随皮肤切换 github-dark / github（浅色） -->
   <link id="hljs-theme" rel="stylesheet" href="/assets/vendor/github-dark.min.css" />
-  <link rel="stylesheet" href="/assets/style.css?v=6" />
+  <link rel="stylesheet" href="/assets/style.css?v=7" />
   <!-- 主题样式：切换主题时替换此链接（theme-dark.css / theme-light.css） -->
   <link id="theme-css" rel="stylesheet" href="/assets/theme-dark.css?v=1" />
 </head>
@@ -88,6 +88,7 @@
           placeholder="每行一个力扣题目链接，例如：&#10;https://leetcode.cn/problems/two-sum/&#10;https://leetcode.cn/problems/valid-parentheses/&#10;https://leetcode.cn/problems/merge-two-sorted-lists/"></textarea>
         <div class="batch-input-row">
           <select id="batch-group-select" class="batch-group-select" title="批量生成的题目归入哪个分组"></select>
+          <button id="btn-batch-add-group" class="btn btn-small" title="批量生成前先创建分组">➕ 新建分组</button>
           <button id="btn-batch-start" class="btn btn-primary">🚀 批量生成</button>
         </div>
         <p class="hint group-hint">💡 提示：批量生成的题目会加入「<span id="batch-group-hint">未分组</span>」</p>
@@ -201,9 +202,12 @@
     <section id="templates-panel" class="panel hidden">
       <div class="templates-header">
         <h2>📋 算法答题模板库</h2>
-        <span class="templates-header-right"><button id="btn-templates-back" class="btn btn-small">← 返回</button></span>
+        <span class="templates-header-right">
+          <button id="btn-tpl-new" class="btn btn-small" title="新建自己的算法模板（登录后可用）">➕ 新建模板</button>
+          <button id="btn-templates-back" class="btn btn-small">← 返回</button>
+        </span>
       </div>
-      <p class="subtitle">针对每种算法类型的固定答题模板（Python 骨架），套用模板可快速写出标准解</p>
+      <p class="subtitle">针对每种算法类型的固定答题模板（Python 骨架），套用模板可快速写出标准解；登录后可新建 / 修改 / 删除自己的模板，自定义模板会用于该分类的代码生成</p>
       <div class="templates-search">
         <input id="tpl-search" type="text" placeholder="🔍 搜索模板（算法名 / 适用场景 / 关键词）…" spellcheck="false" />
       </div>
@@ -288,6 +292,6 @@
   <script src="/assets/vendor/python.min.js"></script>
   <script src="/assets/vendor/java.min.js"></script>
   <script src="/assets/vendor/cpp.min.js"></script>
-  <script src="/assets/app.js?v=6"></script>
+  <script src="/assets/app.js?v=7"></script>
 </body>
 </html>

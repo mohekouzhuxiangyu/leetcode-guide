@@ -404,12 +404,15 @@ def flowchart_node(state: AgentState, llm) -> dict:
     return {"flowchart": sanitize_mermaid(_extract_mermaid(raw))}
 
 
-def code_node(state: AgentState, llm) -> dict:
+def code_node(state: AgentState, llm, tpl_overrides: Optional[dict] = None) -> dict:
     problem = state.get("problem") or {}
     content, note = _problem_context(state)
     category = state.get("category") or "其他"
-    tpl = templates.get_template(category)
-    template_code = (tpl or {}).get("python", "# 无固定模板")
+    # 优先使用用户自定义模板（按分类覆盖），否则回退内置模板
+    template_code = ((tpl_overrides or {}).get(category) or "").strip()
+    if not template_code:
+        tpl = templates.get_template(category)
+        template_code = (tpl or {}).get("python", "# 无固定模板")
     prompt = CODE_PROMPT.format(
         title=problem.get("title", state.get("title", "")),
         difficulty=problem.get("difficulty", "未知"),
@@ -423,7 +426,7 @@ def code_node(state: AgentState, llm) -> dict:
     return {"code": _extract_code(_call_llm(llm, prompt))}
 
 
-def run_pipeline(url: str, set_stage: Optional[StageCallback] = None) -> dict:
+def run_pipeline(url: str, set_stage: Optional[StageCallback] = None, tpl_overrides: Optional[dict] = None) -> dict:
     """执行完整 agent 工作流，返回包含全部产物的字典。"""
     slug = leetcode.extract_slug(url)
     if not slug:
@@ -442,7 +445,7 @@ def run_pipeline(url: str, set_stage: Optional[StageCallback] = None) -> dict:
     builder.add_node("analyze", lambda s: analyze_node(s, llm))
     builder.add_node("walkthrough", lambda s: walkthrough_node(s, llm))
     builder.add_node("flowchart", lambda s: flowchart_node(s, llm))
-    builder.add_node("code", lambda s: code_node(s, llm))
+    builder.add_node("code", lambda s: code_node(s, llm, tpl_overrides))
     builder.set_entry_point("fetch")
     builder.add_edge("fetch", "translate")
     builder.add_edge("translate", "analyze")

@@ -715,6 +715,29 @@ html { overflow-y: scroll; }
 }
 .tpl-name { font-weight: 600; flex: 1; color: var(--text); }
 .tpl-copy { margin-left: auto; }
+/* 模板卡片右侧操作按钮组（复制 / 编辑 / 删除） */
+.tpl-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; flex-wrap: wrap; }
+.tpl-actions .tpl-copy { margin-left: 0; }
+.tpl-badge {
+  display: inline-block;
+  margin-left: 6px;
+  vertical-align: middle;
+  background: rgba(251, 191, 36, 0.15);
+  color: var(--yellow, #fbbf24);
+  border: 1px solid rgba(251, 191, 36, 0.45);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 600;
+}
+/* 模板编辑器：代码骨架输入框等宽字体 */
+.tpl-code-input {
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre;
+  resize: vertical;
+}
 .tpl-when { font-size: 13px; color: var(--text-dim); margin-bottom: 8px; }
 /* 模板代码区：固定深色高对比，暗夜/白日主题下都可读 */
 .tpl-card pre {
@@ -834,6 +857,8 @@ mark {
   border-radius: 12px;
   width: 420px;
   max-width: 90vw;
+  max-height: 88vh;
+  overflow-y: auto;
   padding: 20px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
 }

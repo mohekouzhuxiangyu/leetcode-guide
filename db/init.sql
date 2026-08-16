@@ -52,6 +52,19 @@ CREATE TABLE IF NOT EXISTS user_notes (
     PRIMARY KEY (user_id, slug)
 );
 
+-- 用户自定义算法模板（增删改，按用户独立；内置模板在 backend/templates.py）
+CREATE TABLE IF NOT EXISTS user_templates (
+    id         SERIAL PRIMARY KEY,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    category   TEXT NOT NULL,
+    name       TEXT NOT NULL,
+    when_use   TEXT NOT NULL DEFAULT '',
+    python     TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_user_templates_user ON user_templates (user_id, category);
+
 -- 每日生成额度（每账号每天 200 题上限）
 CREATE TABLE IF NOT EXISTS daily_usage (
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

@@ -351,7 +351,7 @@ def _worker(user_id: int, job_id: str, url: str) -> None:
                 jobs[job_id]["message"] = message
 
     try:
-        result = run_pipeline(url, set_stage)
+        result = run_pipeline(url, set_stage, tpl_overrides=_template_overrides(user_id))
         history.upsert_record(user_id, result["slug"], _record_from_result(result))
         with _job_lock:
             if job_id in jobs:
@@ -432,7 +432,7 @@ def _batch_worker() -> None:
             item = _batch["queue"][0]
             _batch["current"] = item
         try:
-            result = run_pipeline(item["url"])
+            result = run_pipeline(item["url"], tpl_overrides=_template_overrides(item["user_id"]))
             record = _record_from_result(result)
             history.upsert_record(item["user_id"], result["slug"], record)
             # 生成后加入目标分组（多对多）
@@ -575,9 +575,103 @@ async def move_records_api(req: MoveRequest, user: dict = Depends(require_vip)) 
 
 # ---------------- 模板 ----------------
 
+class TemplateRequest(BaseModel):
+    category: str = ""
+    name: str = ""
+    when: str = ""
+    python: str = ""
+
+
+def _template_row(r: dict) -> dict:
+    """数据库行 -> API 模板对象。"""
+    return {
+        "id": r["id"],
+        "category": r["category"],
+        "name": r["name"],
+        "when": r["when_use"] if "when_use" in r else r.get("when", ""),
+        "python": r["python"],
+        "builtin": False,
+    }
+
+
+def _template_overrides(user_id: int) -> dict:
+    """用户自定义模板：{分类: python 骨架}，用于覆盖内置模板参与代码生成。"""
+    rows = query(
+        "SELECT category, python FROM user_templates WHERE user_id = %s AND category <> '' AND python <> '' ORDER BY id",
+        (user_id,),
+        fetch="all",
+    )
+    return {r["category"]: r["python"] for r in rows}
+
+
 @app.get("/api/templates")
-async def get_templates() -> dict:
-    return {"templates": CATEGORY_TEMPLATES}
+async def get_templates(user: Optional[dict] = Depends(get_current_user_optional)) -> dict:
+    """内置模板（只读，所有人可见）+ 当前用户的自定义模板（可增删改）。"""
+    out = []
+    for cat, tpl in CATEGORY_TEMPLATES.items():
+        out.append({
+            "id": None,
+            "category": cat,
+            "name": tpl["name"],
+            "when": tpl["when"],
+            "python": tpl["python"],
+            "builtin": True,
+        })
+    if user:
+        rows = query(
+            "SELECT id, category, name, when_use, python FROM user_templates WHERE user_id = %s ORDER BY id",
+            (user["id"],),
+            fetch="all",
+        )
+        out.extend(_template_row(r) for r in rows)
+    return {"templates": out}
+
+
+@app.post("/api/templates")
+async def create_template(req: TemplateRequest, user: dict = Depends(get_current_user)) -> dict:
+    """新建自定义模板（登录即可，按用户独立）。"""
+    category = (req.category or "").strip()
+    name = (req.name or "").strip()
+    if not category or not name:
+        raise HTTPException(status_code=400, detail="分类与模板名不能为空")
+    row = query(
+        """INSERT INTO user_templates (user_id, category, name, when_use, python)
+           VALUES (%s, %s, %s, %s, %s)
+           RETURNING id, category, name, when_use, python""",
+        (user["id"], category, name, req.when or "", req.python or ""),
+        fetch="one",
+    )
+    return {"ok": True, "template": _template_row(row)}
+
+
+@app.put("/api/templates/{tpl_id}")
+async def update_template(tpl_id: int, req: TemplateRequest, user: dict = Depends(get_current_user)) -> dict:
+    """更新自己的自定义模板。"""
+    owner = query("SELECT id FROM user_templates WHERE id = %s AND user_id = %s", (tpl_id, user["id"]), fetch="one")
+    if not owner:
+        raise HTTPException(status_code=404, detail="模板不存在或无权修改")
+    category = (req.category or "").strip()
+    name = (req.name or "").strip()
+    if not category or not name:
+        raise HTTPException(status_code=400, detail="分类与模板名不能为空")
+    row = query(
+        """UPDATE user_templates
+           SET category = %s, name = %s, when_use = %s, python = %s, updated_at = now()
+           WHERE id = %s AND user_id = %s
+           RETURNING id, category, name, when_use, python""",
+        (category, name, req.when or "", req.python or "", tpl_id, user["id"]),
+        fetch="one",
+    )
+    return {"ok": True, "template": _template_row(row)}
+
+
+@app.delete("/api/templates/{tpl_id}")
+async def delete_template(tpl_id: int, user: dict = Depends(get_current_user)) -> dict:
+    """删除自己的自定义模板。"""
+    n = query("DELETE FROM user_templates WHERE id = %s AND user_id = %s", (tpl_id, user["id"]))
+    if not n:
+        raise HTTPException(status_code=404, detail="模板不存在或无权删除")
+    return {"deleted": tpl_id}
 
 
 # ---------------- 题目心得（Markdown 文档，按用户独立） ----------------
