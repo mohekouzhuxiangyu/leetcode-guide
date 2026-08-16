@@ -776,20 +776,22 @@ mark {
 /* ---------- 批量输入模式 ---------- */
 .batch-mode-row { margin-top: 10px; }
 .batch-input-panel { margin-top: 10px; }
-.batch-input-panel textarea {
+#input-batch textarea {
   width: 100%;
   box-sizing: border-box;
+  min-height: 320px;
   background: var(--bg-input);
   border: 1px solid var(--border);
   border-radius: 8px;
   color: var(--text);
-  font-size: 13px;
-  padding: 10px 12px;
+  font-size: 14px;
+  line-height: 1.7;
+  padding: 12px 14px;
   outline: none;
   resize: vertical;
-  line-height: 1.6;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
 }
-.batch-input-panel textarea:focus { border-color: var(--accent); }
+#input-batch textarea:focus { border-color: var(--accent); }
 .batch-input-row { display: flex; gap: 10px; margin-top: 10px; }
 .batch-group-select {
   flex: 1;
