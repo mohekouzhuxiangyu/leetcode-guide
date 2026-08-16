@@ -112,3 +112,18 @@ leetcode-guide/
 - 生成过程调用 DeepSeek API（默认模型 `deepseek-chat`），会产生 token 费用；
 - 题目原文优先从力扣在线抓取，抓取失败时由模型根据知识补全（页面会有标注）；
 - 所有文件均可自由修改：更换模型、调整提示词、增加语言等都在 `backend/` 下完成。
+
+## VIP 会员与支付宝支付
+
+- **hot100 免费**：共享目录（只读），所有注册用户可查看
+- **VIP 权限**：新增题目、批量生成、删除/编辑题目、分组管理需开通 VIP
+- **开通方式**：侧栏「开通 VIP」→ 选择套餐（月卡 ¥9.9 / 年卡 ¥99）→ 支付宝支付
+- 生产环境配置（`.env`）：
+  ```
+  ALIPAY_APP_ID=你的支付宝应用 app_id
+  ALIPAY_PRIVATE_KEY=应用私钥（RSA2）
+  ALIPAY_PUBLIC_KEY=支付宝公钥
+  ALIPAY_NOTIFY_URL=https://你的域名/api/vip/alipay/notify
+  ALIPAY_RETURN_URL=https://你的域名/?vip=ok
+  ```
+- 未配置支付宝时为**开发模式**：点击支付直接模拟成功（重定向回 `/?vip=ok`），便于本地联调
