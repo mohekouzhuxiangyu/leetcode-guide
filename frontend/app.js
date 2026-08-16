@@ -1066,9 +1066,13 @@ function renderWtVisual(data, prev) {
     let arr = vis.querySelector(".wt-array");
     if (!arr) {
       vis.innerHTML = "";
+      // 数组与指针层放进同一个滚动容器，滚动时指针与格子同步（避免错位）
+      const wrap = document.createElement("div");
+      wrap.className = "wt-array-wrap";
+      vis.appendChild(wrap);
       arr = document.createElement("div");
       arr.className = "wt-array";
-      vis.appendChild(arr);
+      wrap.appendChild(arr);
       for (let k = 0; k < wt.arrayLen; k++) {
         const cell = document.createElement("div");
         cell.className = "wt-cell";
@@ -1077,7 +1081,9 @@ function renderWtVisual(data, prev) {
       }
       const ptrLayer = document.createElement("div");
       ptrLayer.className = "wt-ptr-layer";
-      vis.appendChild(ptrLayer);
+      // 指针层宽度 = 数组总宽（格子60px + 间距4px），保证绝对定位的指针与格子坐标一致
+      ptrLayer.style.width = (wt.arrayLen * 64) + "px";
+      wrap.appendChild(ptrLayer);
       for (const name of wt.ptrNames) {
         const p = document.createElement("div");
         p.className = "wt-ptr";

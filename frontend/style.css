@@ -596,11 +596,13 @@ html { overflow-y: scroll; }
 .wt-title { font-size: 16px; font-weight: 700; margin-bottom: 14px; color: var(--accent-hover); }
 
 .wt-visual { position: relative; }
+/* 数组与指针层共用一个滚动容器，滚动时指针跟随格子，避免错位 */
+.wt-array-wrap { overflow-x: auto; }
 .wt-array {
   display: flex;
   gap: 4px;
   flex-wrap: nowrap;
-  overflow-x: auto;
+  width: max-content;
   padding: 2px 0 4px;
   min-height: 58px;
 }
