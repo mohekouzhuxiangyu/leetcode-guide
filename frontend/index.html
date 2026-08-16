@@ -20,18 +20,12 @@
     <button id="btn-new" class="btn btn-primary btn-block">＋ 新建题目</button>
     <button id="btn-templates" class="btn btn-secondary btn-block">📋 算法模板库</button>
 
-    <!-- Hot 100 批量生成 -->
-    <div class="history-title">🔥 Hot 100 批量生成</div>
-    <div id="batch-panel">
-      <button id="btn-hot100-init" class="btn btn-small btn-block">📥 获取 Hot 100 列表</button>
-      <div id="hot100-summary" class="hot100-summary hidden"></div>
-      <button id="btn-batch-start" class="btn btn-small btn-start btn-block hidden">▶ 批量生成全部</button>
-      <button id="btn-batch-stop" class="btn btn-small btn-stop btn-block hidden">⏹ 停止生成</button>
-      <div id="batch-status" class="batch-status hidden"></div>
-      <div class="batch-progress hidden" id="batch-progress">
-        <div class="batch-bar" id="batch-bar"></div>
-      </div>
+    <!-- 分组 -->
+    <div class="history-title-row">
+      <span class="history-title">🗂️ 分组</span>
+      <button id="btn-add-group" class="btn-mini" title="创建分组">＋ 新建</button>
     </div>
+    <div id="group-filter" class="category-filter"></div>
 
     <!-- 算法分类筛选 -->
     <div class="history-title">🗂️ 算法分类</div>
@@ -44,6 +38,16 @@
     <ul id="history-list" class="history-list">
       <li class="history-empty">暂无记录</li>
     </ul>
+
+    <!-- 批量任务状态（运行时显示） -->
+    <div id="batch-panel" class="batch-panel hidden">
+      <div class="history-title">⏳ 批量任务</div>
+      <div id="batch-status" class="batch-status"></div>
+      <div class="batch-progress" id="batch-progress">
+        <div class="batch-bar" id="batch-bar"></div>
+      </div>
+      <button id="btn-batch-stop" class="btn btn-small btn-stop btn-block">⏹ 停止</button>
+    </div>
   </aside>
 
   <main id="main">
@@ -55,6 +59,17 @@
         <input id="url-input" type="text" spellcheck="false"
                placeholder="https://leetcode.cn/problems/two-sum/ 或 https://leetcode.com/problems/..." />
         <button id="btn-generate" class="btn btn-primary">⚡ 生成解析</button>
+      </div>
+      <div class="batch-mode-row">
+        <button id="btn-toggle-batch" class="btn btn-small">📥 批量输入</button>
+      </div>
+      <div id="batch-input-panel" class="batch-input-panel hidden">
+        <textarea id="urls-input" rows="4" spellcheck="false"
+          placeholder="每行一个力扣题目链接，例如：&#10;https://leetcode.cn/problems/two-sum/&#10;https://leetcode.com/problems/valid-parentheses/&#10;https://leetcode.cn/problems/merge-two-sorted-lists/"></textarea>
+        <div class="batch-input-row">
+          <select id="batch-group-select" class="batch-group-select" title="批量生成的题目归入哪个分组"></select>
+          <button id="btn-batch-start" class="btn btn-primary">🚀 批量生成</button>
+        </div>
       </div>
       <p class="hint">支持 leetcode.com 与 leetcode.cn 链接；示例：
         <span class="example" data-url="https://leetcode.cn/problems/two-sum/">两数之和</span> ·

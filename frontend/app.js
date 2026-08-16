@@ -21,7 +21,9 @@ const state = {
   renderedTabs: {},
   cache: {},
   categoryFilter: "全部",
+  groupFilter: "全部",
   searchQuery: "",
+  groups: [],
   historyItems: [],
   templates: null,
   hot100: null,
@@ -847,9 +849,12 @@ function highlightTitle(title, query) {
   return html;
 }
 
-/* 按分类 + 搜索词过滤历史记录 */
+/* 按分组 + 分类 + 搜索词过滤历史记录 */
 function filterHistoryItems(items) {
   let filtered = items;
+  if (state.groupFilter !== "全部") {
+    filtered = filtered.filter((i) => (i.group || "") === state.groupFilter);
+  }
   if (state.categoryFilter !== "全部") {
     filtered = filtered.filter((i) => (i.category || "其他") === state.categoryFilter);
   }
@@ -895,9 +900,13 @@ function renderHistoryList(items) {
   const list = $("history-list");
   const filtered = filterHistoryItems(items);
   if (!filtered.length) {
-    list.innerHTML = `<li class="history-empty">${
-      state.searchQuery.trim() ? "没有匹配「" + escapeHtml(state.searchQuery.trim()) + "」的题目" : "该分类下暂无记录"
-    }</li>`;
+    let msg = "暂无记录";
+    if (state.searchQuery.trim()) {
+      msg = "没有匹配「" + escapeHtml(state.searchQuery.trim()) + "」的题目";
+    } else if (state.groupFilter !== "全部" || state.categoryFilter !== "全部") {
+      msg = "该分组/分类下暂无记录";
+    }
+    list.innerHTML = `<li class="history-empty">${msg}</li>`;
     return;
   }
   list.innerHTML = "";
@@ -973,44 +982,97 @@ async function loadRecord(slug) {
   }
 }
 
-/* ---------- Hot 100 批量生成 ---------- */
+/* ---------- 分组 ---------- */
 
-async function initHot100(silent) {
-  const btn = $("btn-hot100-init");
-  if (!silent) {
-    btn.textContent = "⏳ 获取中…";
-    btn.disabled = true;
-  }
+async function loadGroups() {
   try {
-    const resp = await fetch("/api/hot100");
+    const resp = await fetch("/api/groups");
     const data = await resp.json();
-    if (!resp.ok) throw new Error(data.detail || "获取失败");
-    state.hot100 = data.items || [];
-    const summary = $("hot100-summary");
-    summary.classList.remove("hidden");
-    summary.textContent = `✅ 已获取 ${state.hot100.length} 题（${data.fetched_at || ""}）`;
-    $("btn-batch-start").classList.remove("hidden");
-  } catch (err) {
-    if (!silent) alert("获取 Hot 100 失败：" + err.message);
-  } finally {
-    btn.textContent = "📥 获取 Hot 100 列表";
-    btn.disabled = false;
+    state.groups = data.groups || [];
+    renderGroupFilter();
+    populateGroupSelect();
+  } catch {
+    /* 忽略 */
   }
 }
 
+function renderGroupFilter() {
+  const el = $("group-filter");
+  let html = `<button class="cat-chip${state.groupFilter === "全部" ? " active" : ""}" data-grp="__all__">全部 (${state.historyItems.length})</button>`;
+  for (const g of state.groups) {
+    const name = g.name || "未分组";
+    html += `<button class="cat-chip${state.groupFilter === g.name ? " active" : ""}" data-grp="${escapeHtml(g.name)}">${escapeHtml(name)} (${g.count})</button>`;
+  }
+  el.innerHTML = html;
+  el.querySelectorAll(".cat-chip").forEach((b) => {
+    b.addEventListener("click", () => {
+      state.groupFilter = b.dataset.grp === "__all__" ? "全部" : b.dataset.grp;
+      el.querySelectorAll(".cat-chip").forEach((x) => x.classList.toggle("active", x === b));
+      renderHistoryList(state.historyItems);
+    });
+  });
+}
+
+function populateGroupSelect() {
+  const sel = $("batch-group-select");
+  if (!sel) return;
+  let html = `<option value="">未分组</option>`;
+  for (const g of state.groups) {
+    if (!g.name) continue;
+    html += `<option value="${escapeHtml(g.name)}">${escapeHtml(g.name)}（${g.count}）</option>`;
+  }
+  sel.innerHTML = html;
+}
+
+async function createGroup() {
+  const name = prompt("输入新分组名称：", "");
+  if (name === null) return;
+  const n = name.trim();
+  if (!n) return;
+  try {
+    const resp = await fetch("/api/groups", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: n }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || "创建失败");
+    if (data.ok === false) alert(`分组「${n}」已存在`);
+    await loadGroups();
+    // 默认选中新分组
+    state.groupFilter = n;
+    renderGroupFilter();
+    renderHistoryList(state.historyItems);
+    // 同步到批量分组下拉
+    const sel = $("batch-group-select");
+    if (sel) sel.value = n;
+  } catch (err) {
+    alert("创建分组失败：" + err.message);
+  }
+}
+
+/* ---------- 批量生成（链接列表 + 分组） ---------- */
+
 async function startBatch() {
-  if (!state.hot100) await initHot100(true);
-  if (!confirm("将批量生成 Hot 100 全部题目（每题约 30~60 秒，全部完成较久，可随时停止）。已生成过的题目会重新生成并更新。确定开始？")) return;
+  const urls = ($("urls-input").value || "")
+    .split("\n")
+    .map((u) => u.trim())
+    .filter(Boolean);
+  if (!urls.length) {
+    alert("请先粘贴题目链接（每行一个）");
+    return;
+  }
+  const group = $("batch-group-select").value || "";
+  if (!confirm(`将批量生成 ${urls.length} 道题（每题约 30~60 秒，可随时停止），归入分组「${group || "未分组"}」。确定开始？`)) return;
   try {
     const resp = await fetch("/api/batch/start", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ limit: 100 }),
+      body: JSON.stringify({ urls, group }),
     });
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.detail || "启动失败");
-    show($("btn-batch-stop"));
-    hide($("btn-batch-start"));
+    if (data.invalid_count) alert(`有 ${data.invalid_count} 个链接无法解析（需包含 /problems/ 路径），已跳过`);
     startBatchPolling();
   } catch (err) {
     alert("启动批量生成失败：" + err.message);
@@ -1040,32 +1102,34 @@ async function updateBatchUI() {
   try {
     const resp = await fetch("/api/batch");
     const b = await resp.json();
+    const panel = $("batch-panel");
     const statusEl = $("batch-status");
-    statusEl.classList.remove("hidden");
     if (b.status === "running") {
-      statusEl.textContent = `⏳ ${b.done}/${b.total} · 正在生成：${b.current ? (b.current.title_cn || b.current.slug) : "…"}`;
-    } else if (b.status === "done") {
-      statusEl.textContent = `✅ 完成：${b.done} 成功 / ${b.failed} 失败`;
-    } else if (b.status === "stopped") {
-      statusEl.textContent = `⏹ 已停止：完成 ${b.done} 题`;
+      panel.classList.remove("hidden");
+      statusEl.textContent = `⏳ ${b.done}/${b.total} · 正在生成：${b.current ? b.current.slug : "…"}`;
+    } else if (b.status === "done" || b.status === "stopped") {
+      stopBatchPolling();
+      panel.classList.remove("hidden");
+      statusEl.textContent = b.status === "done"
+        ? `✅ 完成：${b.done} 成功 / ${b.failed} 失败`
+        : `⏹ 已停止：完成 ${b.done} 题`;
+      loadHistory();
+      loadGroups();
+      // 3 秒后若没有新任务则自动收起
+      setTimeout(() => {
+        fetch("/api/batch")
+          .then((r) => r.json())
+          .then((x) => { if (x.status !== "running") panel.classList.add("hidden"); })
+          .catch(() => {});
+      }, 3000);
     } else {
-      statusEl.textContent = b.message || b.status;
+      panel.classList.add("hidden");
+      return;
     }
     const prog = $("batch-progress");
     if (b.total > 0) {
       prog.classList.remove("hidden");
       $("batch-bar").style.width = Math.round(((b.done + b.failed) / b.total) * 100) + "%";
-    }
-    if (b.status === "running") {
-      show($("btn-batch-stop"));
-      hide($("btn-batch-start"));
-    } else {
-      hide($("btn-batch-stop"));
-      show($("btn-batch-start"));
-      if (b.status === "done" || b.status === "stopped") {
-        stopBatchPolling();
-        loadHistory();
-      }
     }
   } catch {
     /* 忽略 */
@@ -1115,7 +1179,15 @@ function init() {
   $("btn-templates").addEventListener("click", openTemplatesLibrary);
   $("btn-templates-back").addEventListener("click", showInputOnly);
 
-  $("btn-hot100-init").addEventListener("click", () => initHot100(false));
+  // 分组
+  $("btn-add-group").addEventListener("click", createGroup);
+  // 批量输入模式
+  $("btn-toggle-batch").addEventListener("click", () => {
+    const panel = $("batch-input-panel");
+    const btn = $("btn-toggle-batch");
+    panel.classList.toggle("hidden");
+    btn.textContent = panel.classList.contains("hidden") ? "📥 批量输入" : "📤 收起批量输入";
+  });
   $("btn-batch-start").addEventListener("click", startBatch);
   $("btn-batch-stop").addEventListener("click", stopBatch);
 
@@ -1152,7 +1224,7 @@ function init() {
   });
 
   loadHistory();
-  initHot100(true); // 静默预取 Hot 100 列表
+  loadGroups();
   updateBatchUI();  // 若服务端有批量任务在跑，恢复进度显示
 
   // ?slug= 深链：直接加载历史记录

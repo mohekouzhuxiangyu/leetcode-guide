@@ -740,3 +740,51 @@ mark {
   border-radius: 3px;
   padding: 0 2px;
 }
+
+/* ---------- 分组 ---------- */
+.history-title-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.history-title-row .history-title { margin-bottom: 0; }
+.btn-mini {
+  background: none;
+  border: 1px dashed var(--border);
+  color: var(--text-dim);
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-mini:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ---------- 批量输入模式 ---------- */
+.batch-mode-row { margin-top: 10px; }
+.batch-input-panel { margin-top: 10px; }
+.batch-input-panel textarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 13px;
+  padding: 10px 12px;
+  outline: none;
+  resize: vertical;
+  line-height: 1.6;
+}
+.batch-input-panel textarea:focus { border-color: var(--accent); }
+.batch-input-row { display: flex; gap: 10px; margin-top: 10px; }
+.batch-group-select {
+  flex: 1;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 13px;
+  padding: 8px 10px;
+  outline: none;
+}
+.batch-group-select:focus { border-color: var(--accent); }
+
+/* ---------- 侧栏批量任务面板 ---------- */
+.batch-panel { padding-top: 14px; border-top: 1px solid var(--border); margin-top: 14px; }

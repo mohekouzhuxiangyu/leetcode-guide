@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import history, hot100
+from . import history
 from .graph import run_pipeline
 from .leetcode import extract_slug
 from .templates import CATEGORY_TEMPLATES
@@ -112,10 +112,7 @@ async def get_job(job_id: str) -> dict:
     }
 
 
-# ---------------- Hot100 列表与批量生成 ----------------
-
-hot100_cache: dict = {"items": [], "fetched_at": None}
-_hot100_lock = threading.Lock()
+# ---------------- 批量生成（通用：输入链接列表 + 可选分组） ----------------
 
 _batch: dict = {
     "status": "idle",  # idle | running | done | stopped | error
@@ -130,33 +127,6 @@ _batch_lock = threading.Lock()
 _batch_thread = None
 
 
-@app.get("/api/hot100")
-async def get_hot100() -> dict:
-    with _hot100_lock:
-        if hot100_cache["items"]:
-            return {"items": hot100_cache["items"], "fetched_at": hot100_cache["fetched_at"]}
-    try:
-        items = hot100.fetch_hot100()
-        with _hot100_lock:
-            hot100_cache["items"] = items
-            hot100_cache["fetched_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
-        return {"items": items, "fetched_at": hot100_cache["fetched_at"]}
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=f"抓取 Hot 100 列表失败：{exc}")
-
-
-@app.post("/api/hot100/refresh")
-async def refresh_hot100() -> dict:
-    try:
-        items = hot100.fetch_hot100()
-        with _hot100_lock:
-            hot100_cache["items"] = items
-            hot100_cache["fetched_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
-        return {"items": items, "fetched_at": hot100_cache["fetched_at"]}
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=f"抓取 Hot 100 列表失败：{exc}")
-
-
 def _batch_worker() -> None:
     """后台线程：顺序生成批量队列中的题目。"""
     while True:
@@ -169,9 +139,11 @@ def _batch_worker() -> None:
             item = _batch["queue"][0]
             _batch["current"] = item
         try:
-            slug = item["slug"]
-            result = run_pipeline(f"https://leetcode.com/problems/{slug}/")
-            history.upsert_record(slug, _record_from_result(result))
+            result = run_pipeline(item["url"])
+            record = _record_from_result(result)
+            if item.get("group"):
+                record["group"] = item["group"]
+            history.upsert_record(result["slug"], record)
             with _batch_lock:
                 _batch["done"] += 1
         except Exception as exc:  # noqa: BLE001
@@ -185,8 +157,8 @@ def _batch_worker() -> None:
 
 
 class BatchStartRequest(BaseModel):
-    limit: int = 100
-    slugs: Optional[list] = None
+    urls: list = []
+    group: str = ""
 
 
 @app.post("/api/batch/start")
@@ -194,25 +166,31 @@ async def batch_start(req: BatchStartRequest) -> dict:
     global _batch_thread
     with _batch_lock:
         if _batch["status"] == "running":
-            raise HTTPException(status_code=409, detail="批量生成已在运行中")
-        if req.slugs:
-            items = [{"slug": s} for s in req.slugs]
-        else:
-            with _hot100_lock:
-                items = hot100_cache["items"]
-            if not items:
-                items = hot100.fetch_hot100()
-                with _hot100_lock:
-                    hot100_cache["items"] = items
-                    hot100_cache["fetched_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
-        queue = items[: req.limit]
+            raise HTTPException(status_code=409, detail="已有批量任务在运行中，请先停止")
+        queue = []
+        invalid: list[str] = []
+        seen = set()
+        for raw in req.urls:
+            url = (raw or "").strip()
+            if not url:
+                continue
+            slug = extract_slug(url)
+            if not slug:
+                invalid.append(url)
+                continue
+            if slug in seen:
+                continue
+            seen.add(slug)
+            queue.append({"url": url, "slug": slug, "group": (req.group or "").strip()})
+        if not queue:
+            raise HTTPException(status_code=400, detail="没有有效的题目链接（需包含 /problems/ 路径）")
         _batch.update(
             status="running", queue=queue, total=len(queue), done=0, failed=0,
             current=None, message="批量生成进行中…",
         )
     _batch_thread = threading.Thread(target=_batch_worker, daemon=True)
     _batch_thread.start()
-    return {"status": "running", "total": len(queue)}
+    return {"status": "running", "total": len(queue), "invalid_count": len(invalid)}
 
 
 @app.post("/api/batch/stop")
@@ -236,6 +214,43 @@ async def batch_status() -> dict:
             "message": _batch["message"],
         }
     return snapshot
+
+
+# ---------------- 分组 ----------------
+
+class GroupRequest(BaseModel):
+    name: str
+
+
+class MoveRequest(BaseModel):
+    slugs: list = []
+    group: str = ""
+
+
+@app.get("/api/groups")
+async def list_groups_api() -> dict:
+    return {"groups": history.list_groups()}
+
+
+@app.post("/api/groups")
+async def create_group_api(req: GroupRequest) -> dict:
+    name = (req.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="分组名称不能为空")
+    ok = history.create_group(name)
+    return {"ok": ok, "name": name}
+
+
+@app.delete("/api/groups/{name}")
+async def delete_group_api(name: str) -> dict:
+    history.delete_group(name)
+    return {"deleted": name}
+
+
+@app.post("/api/records/move")
+async def move_records_api(req: MoveRequest) -> dict:
+    n = history.move_records(req.slugs, (req.group or "").strip())
+    return {"moved": n}
 
 
 # ---------------- 模板 ----------------
