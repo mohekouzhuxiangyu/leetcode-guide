@@ -203,10 +203,12 @@ function renderUserArea() {
       const balanceBadge = `<span class="balance-badge" title="账户余额（生成题目按题扣费，普通 1 元/题，VIP 0.1 元/题）">💰 ¥${Number(auth.user.balance || 0).toFixed(2)}</span>`;
       const usageBadge = `<span class="credits-badge" title="每日每账号最多生成 200 题（${isVip() ? "VIP 0.1 元/题" : "普通 1 元/题"}）">📊 今日 ${auth.user.today_usage || 0}/200</span>`;
       const upgradeBtn = isVip() ? "" : `<span class="ua-divider"></span><button class="ua-btn" data-act="vip">💖 升级VIP</button>`;
+      const rechargeBtn = `<span class="ua-divider"></span><button class="ua-btn" data-act="recharge" title="余额不足时扫码充值">💰 充值</button>`;
       const adminBtn = auth.user.is_admin ? `<span class="ua-divider"></span><button class="ua-btn" data-act="admin">👑 管理</button>` : "";
       el.innerHTML = `<div class="ua-inner">
         <span class="ua-user">👤 ${escapeHtml(auth.user.username)}</span>
         <span class="ua-badges">${vipBadge}${balanceBadge}${usageBadge}</span>
+        ${rechargeBtn}
         ${upgradeBtn}
         ${adminBtn}
         <span class="ua-divider"></span>
@@ -248,6 +250,49 @@ async function loadQrcodes() {
   } catch {
     /* 忽略 */
   }
+}
+
+/* 💰 余额充值弹窗：收款码 + 联系管理员微信充值 */
+async function openRechargeModal() {
+  openModal(
+    "💰 余额充值",
+    `<div class="modal-form">
+       <div class="recharge-tip">生成题目需要余额：普通 1 元/题，VIP 0.1 元/题。扫码支付后联系管理员充值余额。</div>
+       <div class="donate-qrs">
+         <div class="donate-qr">
+           <div class="donate-qr-title">💚 微信收款</div>
+           <img id="qr-modal-wechat" src="" alt="微信收款码" />
+         </div>
+         <div class="donate-qr">
+           <div class="donate-qr-title">💙 支付宝收款</div>
+           <img id="qr-modal-alipay" src="" alt="支付宝收款码" />
+         </div>
+       </div>
+       <div class="recharge-contact">📲 支付完成后，联系管理员微信：<b class="admin-wechat">zxyzdx9</b> 充值（请备注您的用户名）</div>
+     </div>`,
+    `<button class="btn btn-primary btn-small" id="modal-ok">知道了</button>`,
+    { width: "min(94vw, 480px)" }
+  );
+  $("modal-ok").addEventListener("click", closeModal);
+  // 加载收款码（与 VIP 页同一探测接口）
+  try {
+    const resp = await fetch("/api/qrcodes");
+    const data = await resp.json();
+    const setQr = (id, url) => {
+      const img = document.getElementById(id);
+      if (!img) return;
+      if (url) { img.src = url; img.style.display = ""; }
+      else img.style.display = "none";
+    };
+    setQr("qr-modal-wechat", data.wechat);
+    setQr("qr-modal-alipay", data.alipay);
+  } catch { /* 忽略 */ }
+}
+
+/* 余额不足时：提示 + 弹出充值收款码 */
+function promptRecharge(msg) {
+  toast(msg, true);
+  openRechargeModal();
 }
 
 /* 👑 VIP 会员 / 支持页面（升级 VIP 自助开通） */
@@ -923,7 +968,15 @@ async function submitGenerate(url, force) {
       showInputOnly();
       return;
     }
-    if (!resp.ok) throw new Error(data.detail || "请求失败");
+    if (!resp.ok) {
+      // 余额不足：提示并弹出收款码充值
+      if (data.detail && data.detail.includes("余额不足")) {
+        showInputOnly();
+        promptRecharge(data.detail);
+        return;
+      }
+      throw new Error(data.detail || "请求失败");
+    }
     if (data.reused) {
       // 系统内已有该题题解：复用内容、不重新生成，但按标准正常计费
       showInputOnly();
@@ -2318,7 +2371,15 @@ async function startBatch() {
           body: JSON.stringify({ urls, group }),
         });
         const data = await resp.json();
-        if (!resp.ok) { toast(data.detail || "启动失败", true); return; }
+        if (!resp.ok) {
+          // 余额不足：提示并弹出收款码充值
+          if (data.detail && data.detail.includes("余额不足")) {
+            promptRecharge(data.detail);
+            return;
+          }
+          toast(data.detail || "启动失败", true);
+          return;
+        }
         if (data.invalid_count) toast(`有 ${data.invalid_count} 个链接无法解析，已跳过`, true);
         if (data.skipped) toast(`已跳过 ${data.skipped} 道已在目标分组内的题目`, true);
         if (data.reused) toast(`已复用 ${data.reused} 道系统中已有的题目（未重复生成，首次获得的已计费）`, true);
@@ -2476,6 +2537,7 @@ function init() {
       else if (act === "register") showRegisterModal();
       else if (act === "logout") logoutUser();
       else if (act === "vip") openVipPanel();
+      else if (act === "recharge") openRechargeModal();
       else if (act === "admin") showGrantModal();
       else if (act === "change-password") showChangePasswordModal();
     });
