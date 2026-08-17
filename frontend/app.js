@@ -385,6 +385,8 @@ function showGrantModal() {
        <div id="grant-usage-list"></div>
        <button class="btn btn-small" id="grant-donations-btn" style="width:100%;margin-top:8px;">💰 查看捐赠明细（全部用户）</button>
        <div id="grant-donations-list"></div>
+       <button class="btn btn-small" id="grant-stats-btn" style="width:100%;margin-top:8px;">📊 网站访问统计（浏览量 / IP）</button>
+       <div id="grant-stats-list"></div>
        <hr style="border:none;border-top:1px solid var(--border);margin:14px 0;">
        <label class="modal-label">👥 全部用户（<span id="admin-users-total">…</span>人）· 点击「开通 / 取消 VIP」更改权限</label>
        <div id="admin-users-list" style="max-height:44vh;overflow-y:auto;"></div>
@@ -429,7 +431,41 @@ function showGrantModal() {
     }
   });
   $("grant-donations-btn").addEventListener("click", loadAdminDonations);
+  $("grant-stats-btn").addEventListener("click", loadAdminStats);
   loadAdminUsers();
+}
+
+async function loadAdminStats() {
+  const list = $("grant-stats-list");
+  if (!list) return;
+  try {
+    const resp = await apiFetch("/api/admin/stats");
+    const data = await resp.json();
+    if (!resp.ok) { modalError(data.detail || "获取失败"); return; }
+    const dailyHtml = data.daily.length
+      ? `<table class="usage-table"><tr><th>日期</th><th>浏览量</th><th>独立IP</th></tr>
+         ${data.daily.map((d) => `<tr><td>${escapeHtml(d.date)}</td><td>${d.views}</td><td>${d.unique_ips}</td></tr>`).join("")}
+         </table>`
+      : `<div class="modal-msg" style="color:var(--text-dim);font-size:12px;">近 14 天暂无访问数据</div>`;
+    const topHtml = data.top_ips.length
+      ? `<table class="usage-table"><tr><th>IP 地址</th><th>浏览量</th><th>最后访问</th></tr>
+         ${data.top_ips.map((i) => `<tr><td><code>${escapeHtml(i.ip)}</code></td><td>${i.views}</td><td>${escapeHtml(i.last)}</td></tr>`).join("")}
+         </table>`
+      : `<div class="modal-msg" style="color:var(--text-dim);font-size:12px;">暂无访问记录</div>`;
+    const recentHtml = data.recent.length
+      ? `<table class="usage-table"><tr><th>时间</th><th>IP</th><th>路径</th></tr>
+         ${data.recent.map((i) => `<tr><td>${escapeHtml(i.time)}</td><td><code>${escapeHtml(i.ip)}</code></td><td>${escapeHtml(i.path)}</td></tr>`).join("")}
+         </table>`
+      : "";
+    list.innerHTML = `<div class="modal-msg" style="font-size:12px;margin-top:8px;">
+         📈 总浏览量 <b>${data.total_views}</b> · 独立 IP <b>${data.unique_ips}</b> 个 ｜ 今日 <b>${data.today_views}</b> 次 / ${data.today_unique_ips} 个 IP
+       </div>
+       <div class="stats-sec">近 14 天趋势</div>${dailyHtml}
+       <div class="stats-sec">访问量 TOP IP</div>${topHtml}
+       ${recentHtml ? `<div class="stats-sec">最近访问</div>${recentHtml}` : ""}`;
+  } catch (err) {
+    modalError("获取统计失败：" + err.message);
+  }
 }
 
 async function loadAdminDonations() {

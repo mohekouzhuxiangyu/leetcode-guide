@@ -37,6 +37,23 @@ app.add_middleware(
 )
 
 
+# ---------------- 网站访问统计（浏览量 + 访问 IP） ----------------
+
+@app.middleware("http")
+async def track_visits(request: Request, call_next):
+    """记录每次页面访问（GET /），含客户端 IP（支持 X-Forwarded-For 代理）。"""
+    response = await call_next(request)
+    try:
+        if request.method == "GET" and request.url.path == "/":
+            ip = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+            if not ip and request.client:
+                ip = request.client.host
+            query("INSERT INTO visits (ip, path) VALUES (%s, '/')", (ip or "unknown",))
+    except Exception:  # noqa: BLE001  统计失败不影响正常访问
+        pass
+    return response
+
+
 # ---------------- 认证 ----------------
 
 def get_current_user(authorization: Optional[str] = Header(default=None)) -> dict:
@@ -369,6 +386,60 @@ async def admin_adjust_balance(user_id: int, req: AdminBalanceRequest, user: dic
         (user_id, amount, note or ("充值" if amount > 0 else "扣减"), user["id"]),
     )
     return {"ok": True, "user_id": user_id, "balance": float(n["balance"] or 0), "amount": amount}
+
+
+@app.get("/api/admin/stats")
+async def admin_stats(user: dict = Depends(get_current_user)) -> dict:
+    """管理员查看网站统计：总浏览量、独立 IP、今日数据、近 14 天趋势、TOP IP、最近访问。"""
+    if not user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="仅管理员可操作")
+    total = query("SELECT COUNT(*) c FROM visits", fetch="one")
+    unique = query("SELECT COUNT(DISTINCT ip) c FROM visits", fetch="one")
+    today = query(
+        "SELECT COUNT(*) c, COUNT(DISTINCT ip) u FROM visits WHERE created_at >= CURRENT_DATE",
+        fetch="one",
+    )
+    daily = query(
+        """SELECT to_char(created_at, 'YYYY-MM-DD') AS d, COUNT(*) AS views, COUNT(DISTINCT ip) AS uniq
+           FROM visits WHERE created_at >= CURRENT_DATE - 13
+           GROUP BY d ORDER BY d""",
+        fetch="all",
+    )
+    top_ips = query(
+        """SELECT ip, COUNT(*) AS views, MAX(created_at) AS last
+           FROM visits GROUP BY ip ORDER BY views DESC LIMIT 30""",
+        fetch="all",
+    )
+    recent = query(
+        "SELECT ip, path, created_at FROM visits ORDER BY id DESC LIMIT 20",
+        fetch="all",
+    )
+    return {
+        "total_views": int(total["c"] or 0),
+        "unique_ips": int(unique["c"] or 0),
+        "today_views": int(today["c"] or 0),
+        "today_unique_ips": int(today["u"] or 0),
+        "daily": [
+            {"date": r["d"], "views": int(r["views"]), "unique_ips": int(r["uniq"])}
+            for r in daily
+        ],
+        "top_ips": [
+            {
+                "ip": r["ip"],
+                "views": int(r["views"]),
+                "last": r["last"].strftime("%Y-%m-%d %H:%M") if r["last"] else "",
+            }
+            for r in top_ips
+        ],
+        "recent": [
+            {
+                "ip": r["ip"],
+                "path": r["path"],
+                "time": r["created_at"].strftime("%Y-%m-%d %H:%M:%S") if r["created_at"] else "",
+            }
+            for r in recent
+        ],
+    }
 
 
 @app.post("/api/admin/users/{user_id}/vip")

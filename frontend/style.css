@@ -1350,6 +1350,11 @@ mark {
 .usage-table th { background: var(--bg-input); }
 #grant-usage-list { max-height: 40vh; overflow-y: auto; margin-top: 8px; }
 
+/* 网站访问统计区块 */
+.stats-sec { font-size: 12px; font-weight: 700; color: var(--text-dim); margin: 12px 0 4px; }
+.stats-sec:first-of-type { margin-top: 8px; }
+#grant-stats-list code { background: var(--bg-input); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+
 /* 自定义金额输入框 */
 .donate-input {
   flex: 1;

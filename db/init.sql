@@ -133,6 +133,16 @@ CREATE TABLE IF NOT EXISTS videos (
 );
 ALTER TABLE videos ADD COLUMN IF NOT EXISTS external_url TEXT NOT NULL DEFAULT '';
 
+-- 网站访问统计（浏览量 + 访问 IP）
+CREATE TABLE IF NOT EXISTS visits (
+    id         SERIAL PRIMARY KEY,
+    ip         TEXT NOT NULL,
+    path       TEXT NOT NULL DEFAULT '/',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_visits_created ON visits (created_at);
+CREATE INDEX IF NOT EXISTS idx_visits_ip ON visits (ip);
+
 -- 登录会话表
 CREATE TABLE IF NOT EXISTS sessions (
     token      TEXT PRIMARY KEY,
