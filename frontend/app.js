@@ -1096,27 +1096,49 @@ function buildProblemHtml(problem, record) {
   return html;
 }
 
-/* ---------- 视频讲解（管理员上传；普通 / VIP 用户均可免费观看 hot100 视频） ---------- */
+/* ---------- 视频讲解（管理员上传 / 配置外链；普通 / VIP 用户均可免费观看 hot100 视频） ---------- */
+
+/* B站视频页 → 可嵌入播放器地址 */
+function bilibiliEmbedUrl(url) {
+  const m = String(url || "").match(/bilibili\.com\/video\/(BV[\w]+)/i);
+  if (!m) return null;
+  const p = (String(url).match(/[?&]p=(\d+)/) || [])[1] || 1;
+  return `//player.bilibili.com/player.html?bvid=${m[1]}&page=${p}&high_quality=1&danmaku=0`;
+}
 
 function videoBoxHtml(record) {
-  const has = !!(record && record.video_url);
+  const local = !!(record && record.video_url);
+  const link = (record && record.video_link) || "";
+  const has = local || !!link;
   const isAdmin = !!(auth.user && auth.user.is_admin);
   if (!has && !isAdmin) return "";
   const adminBtns = isAdmin
-    ? (has
-        ? `<span class="video-admin">
-             <button class="btn btn-small" data-video-act="replace">🔄 替换视频</button>
-             <button class="btn btn-small btn-stop" data-video-act="del">🗑 删除视频</button>
-           </span>`
-        : `<span class="video-admin"><button class="btn btn-small" data-video-act="upload">📤 上传视频讲解</button></span>`)
+    ? `<span class="video-admin">
+         <button class="btn btn-small" data-video-act="upload">📤 上传视频</button>
+         <button class="btn btn-small" data-video-act="link">🔗 配置外链</button>
+         ${has ? `<button class="btn btn-small btn-stop" data-video-act="del">🗑 删除</button>` : ""}
+       </span>`
     : "";
+  let player = "";
+  if (local) {
+    player = `<video controls preload="metadata" playsinline src="${escapeHtml(record.video_url)}"></video>`;
+  } else if (link) {
+    const bili = bilibiliEmbedUrl(link);
+    player = bili
+      ? `<iframe class="video-frame" src="${escapeHtml(bili)}" scrolling="no" frameborder="no" allowfullscreen="true"></iframe>
+         <div class="video-link-row"><a class="video-link" href="${escapeHtml(link)}" target="_blank" rel="noopener">↗ 在哔哩哔哩打开观看</a></div>`
+      : `<div class="video-external">
+           <p>该视频讲解为外部链接，点击下方按钮在新窗口观看：</p>
+           <a class="btn btn-primary" href="${escapeHtml(link)}" target="_blank" rel="noopener">🔗 打开视频观看</a>
+         </div>`;
+  }
   return `<div class="video-box">
     <div class="video-header">
       <span class="video-title">🎬 视频讲解</span>
-      ${has ? `<span class="video-sub">管理员录制 · 普通 / VIP 用户均可免费观看</span>` : ""}
+      <span class="video-sub">${local ? "本站视频 · " : link ? "外站链接 · " : ""}普通 / VIP 用户均可免费观看</span>
       ${adminBtns}
     </div>
-    ${has ? `<video controls preload="metadata" playsinline src="${escapeHtml(record.video_url)}"></video>` : ""}
+    ${player}
     <input type="file" id="video-file-input" accept="video/*" hidden />
   </div>`;
 }
@@ -1128,8 +1150,8 @@ function bindVideoEvents(record) {
   const pick = () => input && input.click();
   const up = box.querySelector('[data-video-act="upload"]');
   if (up) up.addEventListener("click", pick);
-  const rep = box.querySelector('[data-video-act="replace"]');
-  if (rep) rep.addEventListener("click", pick);
+  const linkBtn = box.querySelector('[data-video-act="link"]');
+  if (linkBtn) linkBtn.addEventListener("click", () => setVideoLink(record.slug));
   const del = box.querySelector('[data-video-act="del"]');
   if (del) del.addEventListener("click", () => deleteVideoForSlug(record.slug));
   if (input) input.addEventListener("change", () => {
@@ -1147,12 +1169,35 @@ async function uploadVideo(slug, file) {
     const data = await resp.json();
     if (!resp.ok) { toast(data.detail || "上传失败", true); return; }
     toast("✅ 视频讲解已上传");
-    delete state.cache[slug];
-    await loadRecord(slug);
-    loadHistory();
+    reloadRecordAfterVideo(slug);
   } catch (err) {
     toast("上传失败：" + err.message, true);
   }
+}
+
+function setVideoLink(slug) {
+  promptText("配置外站视频链接", "粘贴 B站 / YouTube 等视频页面链接，例如 https://www.bilibili.com/video/BV1xx411c7mD/", "", async (url) => {
+    if (!url.trim()) return;
+    try {
+      const resp = await apiFetch(`/api/videos/${encodeURIComponent(slug)}/link`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: url.trim() }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) { toast(data.detail || "配置失败", true); return; }
+      toast("🔗 外站视频链接已配置");
+      reloadRecordAfterVideo(slug);
+    } catch (err) {
+      toast("配置失败：" + err.message, true);
+    }
+  });
+}
+
+async function reloadRecordAfterVideo(slug) {
+  delete state.cache[slug];
+  await loadRecord(slug);
+  loadHistory();
 }
 
 function deleteVideoForSlug(slug) {
@@ -1162,9 +1207,7 @@ function deleteVideoForSlug(slug) {
       const data = await resp.json();
       if (!resp.ok) { toast(data.detail || "删除失败", true); return; }
       toast("视频讲解已删除");
-      delete state.cache[slug];
-      await loadRecord(slug);
-      loadHistory();
+      reloadRecordAfterVideo(slug);
     } catch (err) {
       toast("删除失败：" + err.message, true);
     }

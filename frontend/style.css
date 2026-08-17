@@ -411,6 +411,21 @@ html { overflow-y: scroll; }
   background: #000;
   border-radius: 8px;
 }
+/* 外站视频（B站嵌入播放器） */
+.video-frame {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  max-height: 62vh;
+  border: none;
+  border-radius: 8px;
+  background: #000;
+}
+.video-link-row { margin-top: 8px; text-align: center; }
+.video-link { color: var(--accent); font-size: 13px; text-decoration: none; }
+.video-link:hover { text-decoration: underline; }
+.video-external { text-align: center; padding: 8px 0; }
+.video-external p { font-size: 13px; color: var(--text-dim); margin-bottom: 10px; }
 .h-video { font-size: 11px; margin-right: 2px; }
 
 /* 流程图 */

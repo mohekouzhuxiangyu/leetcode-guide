@@ -950,14 +950,20 @@ def _remove_video_file(filename: str) -> None:
 
 @app.get("/api/videos/{slug}")
 async def get_video(slug: str, user: Optional[dict] = Depends(get_current_user_optional)) -> dict:
-    """查询题目是否已有视频讲解（无需登录，hot100 免费观看）。"""
+    """查询题目是否已有视频讲解（本地文件或外站链接，无需登录即可查看）。"""
     if not _SLUG_RE.match(slug or ""):
         raise HTTPException(status_code=400, detail="无效的题目标识")
-    row = query("SELECT filename, updated_at FROM videos WHERE slug = %s", (slug,), fetch="one")
+    row = query("SELECT filename, external_url, updated_at FROM videos WHERE slug = %s", (slug,), fetch="one")
     if not row:
         return {"exists": False, "slug": slug}
     ts = row["updated_at"].strftime("%Y-%m-%d %H:%M") if row["updated_at"] else ""
-    return {"exists": True, "slug": slug, "url": f"/videos/{row['filename']}", "updated_at": ts}
+    return {
+        "exists": True,
+        "slug": slug,
+        "url": f"/videos/{row['filename']}" if row["filename"] else "",
+        "external_url": row["external_url"] or "",
+        "updated_at": ts,
+    }
 
 
 @app.post("/api/videos/{slug}")
@@ -974,7 +980,7 @@ async def upload_video(slug: str, file: UploadFile = File(...), user: dict = Dep
     if ctype and not ctype.startswith("video/"):
         raise HTTPException(status_code=400, detail="上传的不是视频文件")
     VIDEO_DIR.mkdir(parents=True, exist_ok=True)
-    # 删除旧视频文件，避免残留
+    # 删除旧视频文件与旧外链，避免残留
     old = query("SELECT filename FROM videos WHERE slug = %s", (slug,), fetch="one")
     if old:
         _remove_video_file(old["filename"])
@@ -986,14 +992,44 @@ async def upload_video(slug: str, file: UploadFile = File(...), user: dict = Dep
     except OSError as exc:
         raise HTTPException(status_code=500, detail=f"视频保存失败：{exc}")
     query(
-        """INSERT INTO videos (slug, filename, uploaded_by, updated_at)
-           VALUES (%s, %s, %s, now())
+        """INSERT INTO videos (slug, filename, external_url, uploaded_by, updated_at)
+           VALUES (%s, %s, '', %s, now())
            ON CONFLICT (slug) DO UPDATE SET filename = EXCLUDED.filename,
+                                            external_url = '',
                                             uploaded_by = EXCLUDED.uploaded_by,
                                             updated_at = now()""",
         (slug, filename, user["id"]),
     )
     return {"ok": True, "slug": slug, "url": f"/videos/{filename}"}
+
+
+class VideoLinkRequest(BaseModel):
+    url: str = ""
+
+
+@app.post("/api/videos/{slug}/link")
+async def set_video_link(slug: str, req: VideoLinkRequest, user: dict = Depends(get_current_user)) -> dict:
+    """管理员为题目配置外站视频链接（如 B站/YouTube 页面地址），同时移除本地视频。"""
+    if not user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="仅管理员可配置视频链接")
+    if not _SLUG_RE.match(slug or ""):
+        raise HTTPException(status_code=400, detail="无效的题目标识")
+    url = (req.url or "").strip()
+    if not (url.startswith("http://") or url.startswith("https://")):
+        raise HTTPException(status_code=400, detail="请输入完整的视频链接（http/https 开头）")
+    old = query("SELECT filename FROM videos WHERE slug = %s", (slug,), fetch="one")
+    if old:
+        _remove_video_file(old["filename"])
+    query(
+        """INSERT INTO videos (slug, filename, external_url, uploaded_by, updated_at)
+           VALUES (%s, '', %s, %s, now())
+           ON CONFLICT (slug) DO UPDATE SET filename = '',
+                                            external_url = EXCLUDED.external_url,
+                                            uploaded_by = EXCLUDED.uploaded_by,
+                                            updated_at = now()""",
+        (slug, url, user["id"]),
+    )
+    return {"ok": True, "slug": slug, "external_url": url}
 
 
 @app.delete("/api/videos/{slug}")

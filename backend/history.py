@@ -53,7 +53,7 @@ def list_records(user_id: Optional[int]) -> list[dict]:
     user_id 为 None（游客）时只返回共享目录（user_id IS NULL）。
     记录可属于多个分组（groups 数组）。
     """
-    video_slugs = {r["slug"] for r in query("SELECT slug FROM videos", fetch="all")}
+    video_slugs = {r["slug"] for r in query("SELECT slug FROM videos WHERE filename <> '' OR external_url <> ''", fetch="all")}
     if user_id is None:
         rows = query(
             """SELECT slug, title, difficulty, tags, category, group_name, url, user_id, created_at, updated_at
@@ -135,10 +135,13 @@ def copy_record_to_user(slug: str, user_id: int) -> bool:
     return True
 
 
-def _video_url(slug: str) -> str:
-    """该题是否有管理员上传的视频讲解，返回 /videos/<file> 或空串。"""
-    row = query("SELECT filename FROM videos WHERE slug = %s", (slug,), fetch="one")
-    return f"/videos/{row['filename']}" if row else ""
+def _video_url(slug: str) -> tuple[str, str]:
+    """该题的视频讲解：(本地文件地址 /videos/<file> 或 '', 外站链接 或 '')。"""
+    row = query("SELECT filename, external_url FROM videos WHERE slug = %s", (slug,), fetch="one")
+    if not row:
+        return "", ""
+    local = f"/videos/{row['filename']}" if row["filename"] else ""
+    return local, row["external_url"] or ""
 
 
 def get_record(user_id: Optional[int], slug: str) -> Optional[dict]:
@@ -168,6 +171,7 @@ def get_record(user_id: Optional[int], slug: str) -> Optional[dict]:
         ]
     elif row["user_id"] is None and row["group_name"]:
         groups = [row["group_name"]]
+    video_local, video_link = _video_url(row["slug"])
     return {
         "slug": row["slug"],
         "url": row["url"] or f"https://leetcode.cn/problems/{row['slug']}/",
@@ -185,7 +189,8 @@ def get_record(user_id: Optional[int], slug: str) -> Optional[dict]:
         "flowchart": row["flowchart"] or "",
         "code": row["code"] or {},
         "errors": row["errors"] or {},
-        "video_url": _video_url(row["slug"]),
+        "video_url": video_local,        # 本地视频文件（/videos/...）
+        "video_link": video_link,        # 外站视频链接（B站/YouTube 等）
         "created_at": _fmt_ts(row["created_at"]),
         "updated_at": _fmt_ts(row["updated_at"]),
     }
