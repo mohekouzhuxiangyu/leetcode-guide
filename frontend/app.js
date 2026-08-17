@@ -2273,9 +2273,9 @@ function renderGroupFilter() {
   // 共享分组（hot100）不可删除，用户分组可删除（🗑）
   let html = "";
   for (const g of state.groups) {
-    const name = g.name || "未分组";
+    if (!g.name) continue; // 跳过虚拟「未分组」条目，只展示真实分组
     const del = (!g.shared && g.name !== "") ? `<span class="g-del" title="删除分组" data-del="${escapeHtml(g.name)}">🗑</span>` : "";
-    html += `<button class="cat-chip${state.groupFilter === g.name ? " active" : ""}" data-grp="${escapeHtml(g.name)}">${escapeHtml(name)} (${g.count})${del}</button>`;
+    html += `<button class="cat-chip${state.groupFilter === g.name ? " active" : ""}" data-grp="${escapeHtml(g.name)}">${escapeHtml(g.name)} (${g.count})${del}</button>`;
   }
   el.innerHTML = html || `<span class="history-empty">暂无分组</span>`;
   el.querySelectorAll(".cat-chip").forEach((b) => {

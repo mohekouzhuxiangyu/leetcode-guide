@@ -331,11 +331,6 @@ def list_groups(user_id: Optional[int]) -> list[dict]:
                WHERE user_id IS NULL AND group_name <> '' GROUP BY group_name""",
             fetch="all",
         )
-        ungrouped_row = query(
-            """SELECT COUNT(*) AS c FROM records
-               WHERE user_id IS NULL AND (group_name = '' OR group_name IS NULL)""",
-            fetch="one",
-        )
     else:
         explicit = [
             r["name"]
@@ -357,22 +352,16 @@ def list_groups(user_id: Optional[int]) -> list[dict]:
                WHERE user_id IS NULL AND group_name <> '' GROUP BY group_name""",
             fetch="all",
         )
-        ungrouped_row = query(
-            "SELECT COUNT(*) AS c FROM records WHERE user_id = %s AND slug NOT IN (SELECT slug FROM record_groups WHERE user_id = %s)",
-            (user_id, user_id),
-            fetch="one",
-        )
     counts = {}
     for r in count_rows:
         counts[r["group_name"]] = counts.get(r["group_name"], 0) + r["c"]
-    ungrouped = ungrouped_row["c"] if ungrouped_row else 0
     names = list(dict.fromkeys(explicit + list(counts.keys())))
+    # 只返回真实分组：不再插入虚拟的「未分组」条目（不属于任何分组的记录在「全部」视图中可见）
     result = [
         {"name": n, "count": counts.get(n, 0), "explicit": n in explicit, "shared": n in shared_names}
         for n in names
+        if n
     ]
-    if ungrouped > 0:
-        result.insert(0, {"name": "", "count": ungrouped, "explicit": False, "shared": False})
     return result
 
 
