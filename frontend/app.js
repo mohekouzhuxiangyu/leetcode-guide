@@ -33,6 +33,7 @@ const state = {
   hot100: null,
   batchTimer: null,
   libraryReturn: "input", // 模板库返回去向：input=回到输入区 | result=回到题目
+  noVipChoice: false,     // 普通用户选择过"不开通 VIP 按 1 元生成"后，本次会话不再询问
 };
 
 /* ---------- 工具函数 ---------- */
@@ -187,11 +188,36 @@ async function refreshUserInfo() {
   } catch { /* 忽略 */ }
 }
 
-/* VIP 权限门控：未登录弹登录，未开通弹捐款支持 */
+/* VIP 权限门控：未登录弹登录，未开通弹捐款支持（写操作如心得/删除等仍要求 VIP） */
 function requireVip() {
   if (!auth.user) { showLoginModal(); return false; }
   if (!isVip()) { openVipPanel(); return false; }
   return true;
+}
+
+/* 普通用户生成题目前的价格提示：开通 VIP（0.1 元/题）或按 1 元/题继续；
+   选择「不开通」后本次会话不再重复询问 */
+function confirmVipOrProceed(onProceed) {
+  if (!auth.user) { showLoginModal(); return; }
+  if (isVip() || state.noVipChoice) { onProceed(); return; }
+  openModal(
+    "💡 开通 VIP 更划算",
+    `<div class="modal-form">
+       <div class="modal-msg">普通用户生成每道题 <b>¥1</b>，VIP 用户每道题 <b>¥0.1</b>（永久 VIP，扫码捐赠 ≥1 元自助开通）。</div>
+       <div class="modal-msg" style="color:var(--text-dim);">是否先开通 VIP？选择「不开通」将按普通价格 <b>¥1/题</b> 从账户余额扣费继续生成。</div>
+     </div>`,
+    `<button class="btn btn-small" id="vip-no">不开了，按 1 元生成</button>
+     <button class="btn btn-primary btn-small" id="vip-yes">👑 开通 VIP</button>`
+  );
+  $("vip-no").addEventListener("click", () => {
+    closeModal();
+    state.noVipChoice = true; // 本次会话不再询问
+    onProceed();
+  });
+  $("vip-yes").addEventListener("click", () => {
+    closeModal();
+    openVipPanel();
+  });
 }
 
 function renderUserArea() {
@@ -952,7 +978,11 @@ function showError(msg) {
 /* ---------- 生成流程 ---------- */
 
 async function submitGenerate(url, force) {
-  if (!requireVip()) return; // 未登录弹登录，未开通 VIP 弹购买
+  if (!auth.user) { showLoginModal(); return; }
+  confirmVipOrProceed(() => runGenerate(url, force));
+}
+
+async function runGenerate(url, force) {
   currentJobId = null;
   showProgress();
   try {
@@ -2350,7 +2380,11 @@ async function createGroup() {
 /* ---------- 批量生成（链接列表 + 分组） ---------- */
 
 async function startBatch() {
-  if (!requireVip()) return;
+  if (!auth.user) { showLoginModal(); return; }
+  confirmVipOrProceed(() => runBatch());
+}
+
+async function runBatch() {
   const urls = ($("urls-input").value || "")
     .split("\n")
     .map((u) => u.trim())
@@ -2500,7 +2534,6 @@ function init() {
   });
 
   $("btn-regen").addEventListener("click", () => {
-    if (!requireVip()) return;
     if (currentSlug && !(state.record && state.record.shared)) {
       submitGenerate("https://leetcode.cn/problems/" + currentSlug + "/", true);
     }
