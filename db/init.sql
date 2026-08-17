@@ -108,6 +108,15 @@ CREATE TABLE IF NOT EXISTS donations (
 );
 CREATE INDEX IF NOT EXISTS idx_donations_user ON donations (user_id);
 
+-- 题目视频讲解（管理员上传，按 slug 关联；文件存 data/videos/）
+CREATE TABLE IF NOT EXISTS videos (
+    slug        TEXT PRIMARY KEY,
+    filename    TEXT NOT NULL,
+    uploaded_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- 登录会话表
 CREATE TABLE IF NOT EXISTS sessions (
     token      TEXT PRIMARY KEY,

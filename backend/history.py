@@ -53,6 +53,7 @@ def list_records(user_id: Optional[int]) -> list[dict]:
     user_id 为 None（游客）时只返回共享目录（user_id IS NULL）。
     记录可属于多个分组（groups 数组）。
     """
+    video_slugs = {r["slug"] for r in query("SELECT slug FROM videos", fetch="all")}
     if user_id is None:
         rows = query(
             """SELECT slug, title, difficulty, tags, category, group_name, url, user_id, created_at, updated_at
@@ -63,6 +64,7 @@ def list_records(user_id: Optional[int]) -> list[dict]:
         for r in rows:
             item = _summary_from_row(r)
             item["groups"] = [r["group_name"]] if r["group_name"] else []
+            item["has_video"] = r["slug"] in video_slugs
             items.append(item)
         return items
     rows = query(
@@ -78,6 +80,7 @@ def list_records(user_id: Optional[int]) -> list[dict]:
     for r in rows:
         item = _summary_from_row(r)
         item["groups"] = m.get(r["slug"], []) if r["user_id"] is not None else ([r["group_name"]] if r["group_name"] else [])
+        item["has_video"] = r["slug"] in video_slugs
         items.append(item)
     return items
 
@@ -132,6 +135,12 @@ def copy_record_to_user(slug: str, user_id: int) -> bool:
     return True
 
 
+def _video_url(slug: str) -> str:
+    """该题是否有管理员上传的视频讲解，返回 /videos/<file> 或空串。"""
+    row = query("SELECT filename FROM videos WHERE slug = %s", (slug,), fetch="one")
+    return f"/videos/{row['filename']}" if row else ""
+
+
 def get_record(user_id: Optional[int], slug: str) -> Optional[dict]:
     if user_id is None:
         row = query(
@@ -176,6 +185,7 @@ def get_record(user_id: Optional[int], slug: str) -> Optional[dict]:
         "flowchart": row["flowchart"] or "",
         "code": row["code"] or {},
         "errors": row["errors"] or {},
+        "video_url": _video_url(row["slug"]),
         "created_at": _fmt_ts(row["created_at"]),
         "updated_at": _fmt_ts(row["updated_at"]),
     }

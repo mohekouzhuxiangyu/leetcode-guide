@@ -1,5 +1,7 @@
 """FastAPI 主应用：用户系统、生成接口、批量生成、历史记录、分组、模板、前端托管。"""
 import asyncio
+import re
+import shutil
 import threading
 import time
 import uuid
@@ -7,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Optional
 
-from fastapi import Depends, FastAPI, Form, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -21,6 +23,9 @@ from .templates import CATEGORY_TEMPLATES
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = BASE_DIR / "frontend"
+VIDEO_DIR = BASE_DIR / "data" / "videos"
+VIDEO_EXTS = {".mp4", ".webm", ".mov", ".m4v"}
+_SLUG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9\-_]*$")
 
 app = FastAPI(title="力扣算法学习助手", version="3.0.0")
 
@@ -929,6 +934,82 @@ async def health() -> dict:
     return {"status": "ok", "model": DEEPSEEK_MODEL}
 
 
+# ---------------- 视频讲解（管理员上传，全用户免费观看 hot100 等题解视频） ----------------
+
+def _remove_video_file(filename: str) -> None:
+    """删除 data/videos 下的文件（仅允许文件名，防路径穿越）。"""
+    if not filename or "/" in filename or "\\" in filename:
+        return
+    p = VIDEO_DIR / filename
+    try:
+        if p.exists():
+            p.unlink()
+    except OSError:
+        pass
+
+
+@app.get("/api/videos/{slug}")
+async def get_video(slug: str, user: Optional[dict] = Depends(get_current_user_optional)) -> dict:
+    """查询题目是否已有视频讲解（无需登录，hot100 免费观看）。"""
+    if not _SLUG_RE.match(slug or ""):
+        raise HTTPException(status_code=400, detail="无效的题目标识")
+    row = query("SELECT filename, updated_at FROM videos WHERE slug = %s", (slug,), fetch="one")
+    if not row:
+        return {"exists": False, "slug": slug}
+    ts = row["updated_at"].strftime("%Y-%m-%d %H:%M") if row["updated_at"] else ""
+    return {"exists": True, "slug": slug, "url": f"/videos/{row['filename']}", "updated_at": ts}
+
+
+@app.post("/api/videos/{slug}")
+async def upload_video(slug: str, file: UploadFile = File(...), user: dict = Depends(get_current_user)) -> dict:
+    """管理员上传 / 替换某题的视频讲解（视频文件存 data/videos/，支持 mp4/webm/mov/m4v）。"""
+    if not user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="仅管理员可上传视频")
+    if not _SLUG_RE.match(slug or ""):
+        raise HTTPException(status_code=400, detail="无效的题目标识")
+    ext = Path(file.filename or "").suffix.lower()
+    if ext not in VIDEO_EXTS:
+        raise HTTPException(status_code=400, detail=f"不支持的视频格式「{ext or '未知'}」，支持：mp4 / webm / mov / m4v")
+    ctype = (file.content_type or "").lower()
+    if ctype and not ctype.startswith("video/"):
+        raise HTTPException(status_code=400, detail="上传的不是视频文件")
+    VIDEO_DIR.mkdir(parents=True, exist_ok=True)
+    # 删除旧视频文件，避免残留
+    old = query("SELECT filename FROM videos WHERE slug = %s", (slug,), fetch="one")
+    if old:
+        _remove_video_file(old["filename"])
+    filename = f"{slug}_{int(time.time())}{ext}"
+    dest = VIDEO_DIR / filename
+    try:
+        with dest.open("wb") as f:
+            shutil.copyfileobj(file.file, f)
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"视频保存失败：{exc}")
+    query(
+        """INSERT INTO videos (slug, filename, uploaded_by, updated_at)
+           VALUES (%s, %s, %s, now())
+           ON CONFLICT (slug) DO UPDATE SET filename = EXCLUDED.filename,
+                                            uploaded_by = EXCLUDED.uploaded_by,
+                                            updated_at = now()""",
+        (slug, filename, user["id"]),
+    )
+    return {"ok": True, "slug": slug, "url": f"/videos/{filename}"}
+
+
+@app.delete("/api/videos/{slug}")
+async def delete_video(slug: str, user: dict = Depends(get_current_user)) -> dict:
+    """管理员删除某题的视频讲解。"""
+    if not user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="仅管理员可删除视频")
+    if not _SLUG_RE.match(slug or ""):
+        raise HTTPException(status_code=400, detail="无效的题目标识")
+    row = query("SELECT filename FROM videos WHERE slug = %s", (slug,), fetch="one")
+    if row:
+        _remove_video_file(row["filename"])
+        query("DELETE FROM videos WHERE slug = %s", (slug,))
+    return {"deleted": slug}
+
+
 # ---------------- 前端静态托管 ----------------
 
 @app.get("/")
@@ -938,3 +1019,7 @@ async def index() -> FileResponse:
 
 if FRONTEND_DIR.exists():
     app.mount("/assets", StaticFiles(directory=FRONTEND_DIR), name="assets")
+
+# 视频文件静态托管（支持 Range 拖动进度播放）
+VIDEO_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/videos", StaticFiles(directory=VIDEO_DIR), name="videos")

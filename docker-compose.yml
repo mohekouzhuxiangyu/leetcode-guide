@@ -39,6 +39,7 @@ services:
       APP_BASE_URL: http://127.0.0.1:8001
     volumes:
       - ./frontend/qrcodes:/app/frontend/qrcodes
+      - ./data:/app/data   # 题目视频讲解等数据持久化
     depends_on:
       db:
         condition: service_healthy

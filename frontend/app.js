@@ -1096,14 +1096,92 @@ function buildProblemHtml(problem, record) {
   return html;
 }
 
+/* ---------- 视频讲解（管理员上传；普通 / VIP 用户均可免费观看 hot100 视频） ---------- */
+
+function videoBoxHtml(record) {
+  const has = !!(record && record.video_url);
+  const isAdmin = !!(auth.user && auth.user.is_admin);
+  if (!has && !isAdmin) return "";
+  const adminBtns = isAdmin
+    ? (has
+        ? `<span class="video-admin">
+             <button class="btn btn-small" data-video-act="replace">🔄 替换视频</button>
+             <button class="btn btn-small btn-stop" data-video-act="del">🗑 删除视频</button>
+           </span>`
+        : `<span class="video-admin"><button class="btn btn-small" data-video-act="upload">📤 上传视频讲解</button></span>`)
+    : "";
+  return `<div class="video-box">
+    <div class="video-header">
+      <span class="video-title">🎬 视频讲解</span>
+      ${has ? `<span class="video-sub">管理员录制 · 普通 / VIP 用户均可免费观看</span>` : ""}
+      ${adminBtns}
+    </div>
+    ${has ? `<video controls preload="metadata" playsinline src="${escapeHtml(record.video_url)}"></video>` : ""}
+    <input type="file" id="video-file-input" accept="video/*" hidden />
+  </div>`;
+}
+
+function bindVideoEvents(record) {
+  const box = document.querySelector("#tab-analysis .video-box");
+  if (!box || !record) return;
+  const input = box.querySelector("#video-file-input");
+  const pick = () => input && input.click();
+  const up = box.querySelector('[data-video-act="upload"]');
+  if (up) up.addEventListener("click", pick);
+  const rep = box.querySelector('[data-video-act="replace"]');
+  if (rep) rep.addEventListener("click", pick);
+  const del = box.querySelector('[data-video-act="del"]');
+  if (del) del.addEventListener("click", () => deleteVideoForSlug(record.slug));
+  if (input) input.addEventListener("change", () => {
+    const f = input.files && input.files[0];
+    if (f) uploadVideo(record.slug, f);
+    input.value = "";
+  });
+}
+
+async function uploadVideo(slug, file) {
+  const fd = new FormData();
+  fd.append("file", file);
+  try {
+    const resp = await apiFetch(`/api/videos/${encodeURIComponent(slug)}`, { method: "POST", body: fd });
+    const data = await resp.json();
+    if (!resp.ok) { toast(data.detail || "上传失败", true); return; }
+    toast("✅ 视频讲解已上传");
+    delete state.cache[slug];
+    await loadRecord(slug);
+    loadHistory();
+  } catch (err) {
+    toast("上传失败：" + err.message, true);
+  }
+}
+
+function deleteVideoForSlug(slug) {
+  confirmAction("删除视频", "确定删除该题的视频讲解？删除后不可恢复。", async () => {
+    try {
+      const resp = await apiFetch(`/api/videos/${encodeURIComponent(slug)}`, { method: "DELETE" });
+      const data = await resp.json();
+      if (!resp.ok) { toast(data.detail || "删除失败", true); return; }
+      toast("视频讲解已删除");
+      delete state.cache[slug];
+      await loadRecord(slug);
+      loadHistory();
+    } catch (err) {
+      toast("删除失败：" + err.message, true);
+    }
+  });
+}
+
 function renderAnalysisTab(analysis) {
   const el = $("tab-analysis");
+  const record = state.record;
   if (!analysis || !analysis.trim()) {
-    el.innerHTML = `<p class="problem-empty">算法解析生成失败。</p>`;
+    el.innerHTML = videoBoxHtml(record) + `<p class="problem-empty">算法解析生成失败。</p>`;
+    bindVideoEvents(record);
     return;
   }
-  el.innerHTML = renderMarkdown(analysis);
+  el.innerHTML = videoBoxHtml(record) + renderMarkdown(analysis);
   highlightAll(el);
+  bindVideoEvents(record);
 }
 
 function renderFlowchartTab(mermaidCode) {
@@ -1846,9 +1924,10 @@ function makeHistoryItem(item) {
   li.dataset.slug = item.slug;
   const linkUrl = item.url || "https://leetcode.cn/problems/" + item.slug + "/";
   const freeBadge = item.shared ? '<span class="free-badge">免费</span> ' : "";
+  const videoMark = item.has_video ? '<span class="h-video" title="有视频讲解">🎬</span> ' : "";
   const delBtn = item.shared ? "" : '<button class="h-del" title="删除记录">🗑</button>';
   li.innerHTML = `
-    <div class="h-title">${freeBadge}${highlightTitle(item.title, state.searchQuery.trim())}</div>
+    <div class="h-title">${videoMark}${freeBadge}${highlightTitle(item.title, state.searchQuery.trim())}</div>
     <div class="h-meta">
       <span class="h-diff ${item.difficulty}">${DIFF_ZH[item.difficulty] || item.difficulty}</span>
       <span class="h-date">${escapeHtml((item.updated_at || "").slice(0, 16))}</span>
