@@ -1282,6 +1282,20 @@ mark {
   vertical-align: middle;
 }
 
+/* 账户余额徽章（生成题目按题扣费） */
+.balance-badge {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(22, 163, 74, 0.15);
+  color: var(--green);
+  border: 1px solid rgba(22, 163, 74, 0.45);
+  vertical-align: middle;
+}
+
 /* ---------- VIP 会员页面 ---------- */
 .vip-page { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 10px; }
 .vip-left h3, .vip-right h3 { color: var(--accent-hover); margin: 20px 0 10px; font-size: 16px; }

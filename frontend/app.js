@@ -176,6 +176,17 @@ function isVip() {
   return new Date(auth.user.vip_expires_at) > new Date();
 }
 
+/* 重新拉取用户信息（余额/今日用量等），生成扣费后刷新显示 */
+async function refreshUserInfo() {
+  try {
+    const resp = await apiFetch("/api/auth/me");
+    if (resp.ok) {
+      auth.user = (await resp.json()).user;
+      renderUserArea();
+    }
+  } catch { /* 忽略 */ }
+}
+
 /* VIP 权限门控：未登录弹登录，未开通弹捐款支持 */
 function requireVip() {
   if (!auth.user) { showLoginModal(); return false; }
@@ -189,12 +200,13 @@ function renderUserArea() {
   areas.forEach((el) => {
     if (auth.user) {
       const vipBadge = isVip() ? `<span class="vip-badge">👑 VIP</span>` : "";
+      const balanceBadge = `<span class="balance-badge" title="账户余额（生成题目按题扣费，普通 1 元/题，VIP 0.1 元/题）">💰 ¥${Number(auth.user.balance || 0).toFixed(2)}</span>`;
       const usageBadge = `<span class="credits-badge" title="每日每账号最多生成 200 题（${isVip() ? "VIP 0.1 元/题" : "普通 1 元/题"}）">📊 今日 ${auth.user.today_usage || 0}/200</span>`;
       const upgradeBtn = isVip() ? "" : `<span class="ua-divider"></span><button class="ua-btn" data-act="vip">💖 升级VIP</button>`;
       const adminBtn = auth.user.is_admin ? `<span class="ua-divider"></span><button class="ua-btn" data-act="admin">👑 管理</button>` : "";
       el.innerHTML = `<div class="ua-inner">
         <span class="ua-user">👤 ${escapeHtml(auth.user.username)}</span>
-        <span class="ua-badges">${vipBadge}${usageBadge}</span>
+        <span class="ua-badges">${vipBadge}${balanceBadge}${usageBadge}</span>
         ${upgradeBtn}
         ${adminBtn}
         <span class="ua-divider"></span>
@@ -391,28 +403,72 @@ async function loadAdminUsers() {
       return;
     }
     list.innerHTML = `<table class="usage-table">
-      <tr><th>ID</th><th>用户名</th><th>邮箱</th><th>注册</th><th>今日</th><th>捐赠</th><th>题目</th><th>分组</th><th>VIP</th><th>操作</th></tr>
+      <tr><th>ID</th><th>用户名</th><th>邮箱</th><th>注册</th><th>余额</th><th>今日</th><th>捐赠</th><th>题目</th><th>分组</th><th>VIP</th><th>操作</th></tr>
       ${data.users.map((u) => `<tr>
         <td>${u.id}</td>
         <td>${escapeHtml(u.username)}</td>
         <td>${escapeHtml(u.email)}${u.email_verified ? "" : ` <span style="color:var(--red)">(未验证)</span>`}</td>
         <td>${escapeHtml(u.created_at)}</td>
+        <td><b>¥${u.balance.toFixed(2)}</b></td>
         <td>${u.today_usage}/200</td>
         <td>${u.donated > 0 ? `<b>¥${u.donated.toFixed(2)}</b>` : "—"}</td>
         <td>${u.record_count}</td>
         <td>${u.group_count}</td>
         <td>${u.vip ? '<span class="vip-badge">VIP</span>' : "—"}</td>
-        <td>${u.vip
-          ? `<button class="btn btn-small btn-stop" data-vip-id="${u.id}" data-vip-off="1">取消 VIP</button>`
-          : `<button class="btn btn-small btn-start" data-vip-id="${u.id}" data-vip-on="1">开通 VIP</button>`}</td>
+        <td style="white-space:nowrap;">
+          <button class="btn btn-small btn-start" data-balance-id="${u.id}" data-balance-name="${escapeHtml(u.username)}" data-balance-now="${u.balance}">💰 调额</button>
+          ${u.vip
+            ? `<button class="btn btn-small btn-stop" data-vip-id="${u.id}" data-vip-off="1">取消 VIP</button>`
+            : `<button class="btn btn-small" data-vip-id="${u.id}" data-vip-on="1">开通 VIP</button>`}
+        </td>
       </tr>`).join("")}
     </table>`;
     list.querySelectorAll("[data-vip-id]").forEach((btn) => {
       btn.addEventListener("click", () => setUserVip(btn.dataset.vipId, !!btn.dataset.vipOn));
     });
+    list.querySelectorAll("[data-balance-id]").forEach((btn) => {
+      btn.addEventListener("click", () => showBalanceModal(btn.dataset.balanceId, btn.dataset.balanceName, parseFloat(btn.dataset.balanceNow) || 0));
+    });
   } catch (err) {
     modalError("获取用户列表失败：" + err.message);
   }
+}
+
+/* 管理员调整用户余额（扫码支付到账后充值 / 扣减） */
+function showBalanceModal(userId, username, current) {
+  openModal(
+    `💰 调整余额 · ${username}`,
+    `<div class="modal-form">
+       <label class="modal-label">当前余额</label>
+       <div class="modal-msg" style="font-weight:700;color:var(--green);">¥${current.toFixed(2)}</div>
+       <label class="modal-label">调整金额（元）：正数=充值到账，负数=扣减</label>
+       <input id="bal-amount" class="modal-input" type="number" step="0.01" placeholder="例如 50 或 -10" />
+       <label class="modal-label">备注（可选）</label>
+       <input id="bal-note" class="modal-input" type="text" spellcheck="false" placeholder="例如：微信扫码支付 ¥50" />
+     </div>`,
+    `<button class="btn btn-small" id="modal-cancel">取消</button>
+     <button class="btn btn-primary btn-small" id="modal-ok">确认调整</button>`
+  );
+  $("modal-cancel").addEventListener("click", closeModal);
+  $("modal-ok").addEventListener("click", async () => {
+    const amount = parseFloat($("bal-amount").value);
+    if (isNaN(amount) || !amount) { modalError("请输入调整金额（正数充值 / 负数扣减）"); return; }
+    const note = $("bal-note").value.trim();
+    try {
+      const resp = await apiFetch(`/api/admin/users/${userId}/balance`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount, note }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) { modalError(data.detail || "操作失败"); return; }
+      closeModal();
+      toast(`已调整「${username}」余额 → ¥${data.balance.toFixed(2)}`);
+      loadAdminUsers();
+    } catch (err) {
+      modalError("操作失败：" + err.message);
+    }
+  });
 }
 
 async function setUserVip(userId, vip) {
@@ -875,6 +931,7 @@ async function submitGenerate(url, force) {
       loadRecord(data.slug);
       loadHistory();
       loadGroups();
+      refreshUserInfo(); // 刷新余额显示（复用也扣费）
       return;
     }
     currentJobId = data.job_id;
@@ -915,6 +972,7 @@ async function pollJob() {
         renderResult(job.result);
         showResult();
         loadHistory();
+        refreshUserInfo(); // 生成完成，刷新余额显示
       } catch (err) {
         console.error("渲染结果失败:", err);
         showError("渲染结果失败：" + err.message);

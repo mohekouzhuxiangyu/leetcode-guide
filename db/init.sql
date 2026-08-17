@@ -30,6 +30,20 @@ CREATE TABLE IF NOT EXISTS users (
 ALTER TABLE users ADD COLUMN IF NOT EXISTS vip BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS vip_expires_at TIMESTAMPTZ;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS credits INTEGER NOT NULL DEFAULT 0;
+-- 账户余额（元）：生成题目按题扣费，管理员手动充值/调整
+ALTER TABLE users ADD COLUMN IF NOT EXISTS balance NUMERIC(10,2) NOT NULL DEFAULT 0;
+
+-- 余额流水（管理员调整 / 生成扣费）
+CREATE TABLE IF NOT EXISTS balance_log (
+    id         SERIAL PRIMARY KEY,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    amount     NUMERIC(10,2) NOT NULL,           -- 正=收入 负=支出
+    type       TEXT NOT NULL DEFAULT 'adjust',   -- adjust=管理员调整 | usage=生成扣费
+    note       TEXT NOT NULL DEFAULT '',
+    admin_id   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_balance_log_user ON balance_log (user_id, created_at);
 
 -- VIP 订单表（支付宝）
 CREATE TABLE IF NOT EXISTS vip_orders (

@@ -154,6 +154,7 @@ def _user_public(row) -> dict:
         "vip": bool(row["vip"]),
         "vip_expires_at": None,  # VIP 为永久，无期限
         "today_usage": today,
+        "balance": float(row.get("balance") or 0),  # 账户余额（元）
         "is_admin": bool(ADMIN_EMAIL) and row["email"].strip().lower() == ADMIN_EMAIL.strip().lower(),
     }
 
@@ -162,7 +163,7 @@ def get_user_by_token(token: str):
     if not token:
         return None
     row = query(
-        """SELECT u.id, u.username, u.email, u.email_verified, u.vip, u.vip_expires_at, u.credits
+        """SELECT u.id, u.username, u.email, u.email_verified, u.vip, u.vip_expires_at, u.credits, u.balance
            FROM sessions s JOIN users u ON u.id = s.user_id
            WHERE s.token = %s""",
         (token,),

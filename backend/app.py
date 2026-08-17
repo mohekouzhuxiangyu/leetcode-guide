@@ -270,7 +270,7 @@ async def admin_list_users(user: dict = Depends(get_current_user)) -> dict:
     if not user.get("is_admin"):
         raise HTTPException(status_code=403, detail="仅管理员可操作")
     rows = query(
-        """SELECT u.id, u.username, u.email, u.email_verified, u.vip, u.created_at,
+        """SELECT u.id, u.username, u.email, u.email_verified, u.vip, u.balance, u.created_at,
                   COALESCE(d.count, 0) AS today_usage,
                   COALESCE(don.total, 0) AS donated,
                   (SELECT COUNT(*) FROM records r WHERE r.user_id = u.id) AS record_count,
@@ -293,6 +293,7 @@ async def admin_list_users(user: dict = Depends(get_current_user)) -> dict:
             "email": r["email"],
             "email_verified": bool(r["email_verified"]),
             "vip": bool(r["vip"]),
+            "balance": float(r["balance"] or 0),
             "created_at": r["created_at"].strftime("%Y-%m-%d") if r["created_at"] else "",
             "today_usage": int(r["today_usage"] or 0),
             "donated": float(r["donated"] or 0),
@@ -331,6 +332,43 @@ async def admin_donations(user: dict = Depends(get_current_user)) -> dict:
 
 class AdminVipRequest(BaseModel):
     vip: bool = True
+
+
+class AdminBalanceRequest(BaseModel):
+    amount: float = 0.0
+    note: str = ""
+
+
+@app.post("/api/admin/users/{user_id}/balance")
+async def admin_adjust_balance(user_id: int, req: AdminBalanceRequest, user: dict = Depends(get_current_user)) -> dict:
+    """管理员手动调整用户余额（扫码支付到账后充值；负数=扣减）。"""
+    if not user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="仅管理员可操作")
+    row = query("SELECT id, username FROM users WHERE id = %s", (user_id,), fetch="one")
+    if not row:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    try:
+        amount = round(float(req.amount), 2)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="金额格式不正确")
+    if amount == 0:
+        raise HTTPException(status_code=400, detail="调整金额不能为 0")
+    if amount < -100000 or amount > 100000:
+        raise HTTPException(status_code=400, detail="调整金额超出范围")
+    # 原子调整：扣减时余额不能为负
+    n = query(
+        "UPDATE users SET balance = balance + %s WHERE id = %s AND balance + %s >= 0 RETURNING balance",
+        (amount, user_id, amount),
+        fetch="one",
+    )
+    if not n:
+        raise HTTPException(status_code=400, detail="余额不足，无法扣减该金额")
+    note = (req.note or "").strip()[:100]
+    query(
+        "INSERT INTO balance_log (user_id, amount, type, note, admin_id) VALUES (%s, %s, 'adjust', %s, %s)",
+        (user_id, amount, note or ("充值" if amount > 0 else "扣减"), user["id"]),
+    )
+    return {"ok": True, "user_id": user_id, "balance": float(n["balance"] or 0), "amount": amount}
 
 
 @app.post("/api/admin/users/{user_id}/vip")
@@ -397,7 +435,7 @@ def _today_used(user_id: int) -> int:
 
 
 def record_generation(user: dict, slugs: list) -> None:
-    """生成前校验每日额度并记录计费流水（原子占用额度，超限抛 403）。"""
+    """生成前校验每日额度并从账户余额扣费（原子占用额度，超限/余额不足抛 403）。"""
     count = len(slugs)
     if count <= 0:
         return
@@ -422,12 +460,41 @@ def record_generation(user: dict, slugs: list) -> None:
             status_code=403,
             detail=f"已达每日生成上限（{DAILY_LIMIT} 题/账号/天）：今日已用 {used} 题",
         )
-    # 记录计费流水（普通 1 元/题，VIP 0.1 元/题，用于结算）
+    # 账户余额扣费（普通 1 元/题，VIP 0.1 元/题；原子扣减，不足则回滚每日额度占用）
+    total = round(price * count, 2)
+    cur = query("SELECT balance FROM users WHERE id = %s", (user["id"],), fetch="one")
+    balance = float(cur["balance"] or 0) if cur else 0.0
+    if balance < total:
+        # 回滚已占用的每日额度
+        query(
+            "UPDATE daily_usage SET count = GREATEST(daily_usage.count - %s, 0) WHERE user_id = %s AND day = CURRENT_DATE",
+            (count, user["id"]),
+        )
+        raise HTTPException(
+            status_code=403,
+            detail=f"余额不足：生成 {count} 题需 ¥{total:.2f}，当前余额 ¥{balance:.2f}，请联系管理员充值",
+        )
+    n = query(
+        "UPDATE users SET balance = balance - %s WHERE id = %s AND balance >= %s RETURNING balance",
+        (total, user["id"], total),
+        fetch="one",
+    )
+    if not n:
+        query(
+            "UPDATE daily_usage SET count = GREATEST(daily_usage.count - %s, 0) WHERE user_id = %s AND day = CURRENT_DATE",
+            (count, user["id"]),
+        )
+        raise HTTPException(status_code=403, detail="余额不足，请联系管理员充值")
+    # 记录计费流水（普通 1 元/题，VIP 0.1 元/题，用于结算）与余额流水
     for slug in slugs:
         query(
             "INSERT INTO usage_log (user_id, slug, price) VALUES (%s, %s, %s)",
             (user["id"], slug, price),
         )
+    query(
+        "INSERT INTO balance_log (user_id, amount, type, note) VALUES (%s, %s, 'usage', %s)",
+        (user["id"], -total, f"生成 {count} 题（{price} 元/题）"),
+    )
 
 
 # ---------------- 生成任务（后台执行，前端轮询进度） ----------------
