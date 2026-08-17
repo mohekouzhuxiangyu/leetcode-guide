@@ -81,6 +81,11 @@
                  placeholder="https://leetcode.cn/problems/two-sum/ 或 https://leetcode.com/problems/..." />
           <button id="btn-generate" class="btn btn-primary">⚡ 生成解析</button>
         </div>
+        <div class="single-group-row">
+          <select id="single-group-select" class="batch-group-select" title="生成的题目归入哪个分组"></select>
+          <button id="btn-single-add-group" class="btn btn-small" title="生成前先创建分组">➕ 新建分组</button>
+          <span class="hint group-hint" style="margin:0;">💡 将加入「<span id="single-group-hint">未分组</span>」</span>
+        </div>
       </div>
 
       <div id="input-batch" class="input-tab-panel hidden">
@@ -294,6 +299,6 @@
   <script src="/assets/vendor/python.min.js"></script>
   <script src="/assets/vendor/java.min.js"></script>
   <script src="/assets/vendor/cpp.min.js"></script>
-  <script src="/assets/app.js?v=22"></script>
+  <script src="/assets/app.js?v=23"></script>
 </body>
 </html>

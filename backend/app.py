@@ -507,6 +507,7 @@ _executor = ThreadPoolExecutor(max_workers=4)
 class GenerateRequest(BaseModel):
     url: str
     force: bool = False  # True=重新生成（跳过查重）
+    group: str = ""      # 生成的题目归入哪个分组（用户自己的分组）
 
 
 def _record_from_result(result: dict) -> dict:
@@ -556,6 +557,13 @@ async def generate(req: GenerateRequest, user: dict = Depends(get_current_user))
     slug = extract_slug(url)
     if not slug:
         raise HTTPException(status_code=400, detail="无法解析题目链接，请检查格式（需包含 /problems/ 路径）")
+    target_group = (req.group or "").strip()
+    if target_group:
+        if _is_shared_group(target_group):
+            raise HTTPException(status_code=400, detail="不能归入系统共享分组（hot100）")
+        limit = _group_limit(user)
+        if not history.user_has_group(user["id"], target_group) and history.user_group_count(user["id"]) >= limit:
+            raise HTTPException(status_code=400, detail=f"分组数量已达上限（{limit} 个）")
     # 自己已生成过：提示并停止（重新生成按钮会带 force=true 跳过）
     if not req.force and history.user_has_record(user["id"], slug):
         rec = history.get_record(user["id"], slug)
@@ -569,6 +577,8 @@ async def generate(req: GenerateRequest, user: dict = Depends(get_current_user))
     if not req.force and history.find_any_record(slug):
         record_generation(user, [slug])
         history.copy_record_to_user(slug, user["id"])
+        if target_group:
+            history.add_to_group(user["id"], slug, target_group)
         return {"job_id": None, "slug": slug, "reused": True}
     # 全新生成：计费（普通 1 元/题，VIP 0.1 元/题；每日 200 题上限）
     record_generation(user, [slug])
@@ -578,6 +588,9 @@ async def generate(req: GenerateRequest, user: dict = Depends(get_current_user))
         jobs[job_id] = {"status": "running", "stage": "queued", "message": "任务已创建，等待执行…", "result": None, "error": None}
     loop = asyncio.get_running_loop()
     loop.run_in_executor(_executor, _worker, user["id"], job_id, url)
+    # 目标分组归属（record_groups 与记录解耦，可先登记）
+    if target_group:
+        history.add_to_group(user["id"], slug, target_group)
     return {"job_id": job_id, "slug": slug}
 
 

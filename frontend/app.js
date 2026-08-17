@@ -986,10 +986,11 @@ async function runGenerate(url, force) {
   currentJobId = null;
   showProgress();
   try {
+    const group = ($("single-group-select") && $("single-group-select").value) || "";
     const resp = await apiFetch("/api/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url, force: !!force }),
+      body: JSON.stringify({ url, force: !!force, group }),
     });
     const data = await resp.json();
     if (resp.status === 409) {
@@ -2322,16 +2323,18 @@ function deleteGroup(name) {
 }
 
 function populateGroupSelect() {
-  const sel = $("batch-group-select");
-  if (!sel) return;
-  // 批量目标分组只能是自己的分组（hot100 等共享分组不可作为批量目标）
+  // 批量/单条 目标分组都只能是自己的分组（hot100 等共享分组不可作为目标）
   let html = `<option value="">未分组</option>`;
   for (const g of state.groups) {
     if (!g.name || g.shared) continue;
     html += `<option value="${escapeHtml(g.name)}">${escapeHtml(g.name)}（${g.count}）</option>`;
   }
-  sel.innerHTML = html;
+  const selB = $("batch-group-select");
+  if (selB) selB.innerHTML = html;
+  const selS = $("single-group-select");
+  if (selS) selS.innerHTML = html;
   updateBatchGroupHint();
+  updateSingleGroupHint();
 }
 
 /* 批量分组提示：实时显示选中的分组 */
@@ -2342,9 +2345,19 @@ function updateBatchGroupHint() {
   hint.textContent = sel.value || "未分组";
 }
 
-function bindBatchGroupHint() {
-  const sel = $("batch-group-select");
-  if (sel) sel.addEventListener("change", updateBatchGroupHint);
+/* 单条分组提示：实时显示选中的分组 */
+function updateSingleGroupHint() {
+  const hint = $("single-group-hint");
+  const sel = $("single-group-select");
+  if (!hint || !sel) return;
+  hint.textContent = sel.value || "未分组";
+}
+
+function bindGroupHints() {
+  const selB = $("batch-group-select");
+  if (selB) selB.addEventListener("change", updateBatchGroupHint);
+  const selS = $("single-group-select");
+  if (selS) selS.addEventListener("change", updateSingleGroupHint);
 }
 
 async function createGroup() {
@@ -2367,9 +2380,11 @@ async function createGroup() {
       renderGroupFilter();
       refreshFilterChips();
       renderHistoryList(state.historyItems);
-      // 同步到批量分组下拉
-      const sel = $("batch-group-select");
-      if (sel) { sel.value = name; updateBatchGroupHint(); }
+      // 同步到 批量/单条 分组下拉
+      const selB = $("batch-group-select");
+      if (selB) { selB.value = name; updateBatchGroupHint(); }
+      const selS = $("single-group-select");
+      if (selS) { selS.value = name; updateSingleGroupHint(); }
       toast(`已创建分组「${name}」`);
     } catch (err) {
       toast("创建分组失败：" + err.message, true);
@@ -2591,7 +2606,9 @@ function init() {
   });
   $("btn-batch-start").addEventListener("click", startBatch);
   $("btn-batch-stop").addEventListener("click", stopBatch);
-  bindBatchGroupHint();
+  bindGroupHints();
+  // 单条生成：也可新建分组
+  $("btn-single-add-group").addEventListener("click", createGroup);
 
   // 题目心得编辑器
   bindNoteEditor();
