@@ -564,22 +564,35 @@ async def generate(req: GenerateRequest, user: dict = Depends(get_current_user))
         limit = _group_limit(user)
         if not history.user_has_group(user["id"], target_group) and history.user_group_count(user["id"]) >= limit:
             raise HTTPException(status_code=400, detail=f"分组数量已达上限（{limit} 个）")
-    # 自己已生成过：提示并停止（重新生成按钮会带 force=true 跳过）
-    if not req.force and history.user_has_record(user["id"], slug):
-        rec = history.get_record(user["id"], slug)
-        title = rec["title"] if rec else slug
-        raise HTTPException(
-            status_code=409,
-            detail=f"「{title}」已生成过，请勿重复生成（如需更新内容请点击「重新生成」）",
-        )
-    # 系统内已有该题题解（共享目录或其他用户生成过）：复用内容，不重新生成
-    # （复用只是节省生成成本，用户首次获得该题仍需按标准计费）
-    if not req.force and history.find_any_record(slug):
-        record_generation(user, [slug])
-        history.copy_record_to_user(slug, user["id"])
-        if target_group:
+    if not req.force:
+        # 选了分组：只判断「这个分组里有没有」——已在组内则提示停止
+        if target_group and slug in history.slugs_in_group(user["id"], target_group, [slug]):
+            rec = history.get_record(user["id"], slug)
+            title = rec["title"] if rec else slug
+            raise HTTPException(
+                status_code=409,
+                detail=f"「{title}」已在分组「{target_group}」中，请勿重复生成",
+            )
+        # 未选分组：自己已生成过 → 提示并停止（重新生成按钮会带 force=true 跳过）
+        if not target_group and history.user_has_record(user["id"], slug):
+            rec = history.get_record(user["id"], slug)
+            title = rec["title"] if rec else slug
+            raise HTTPException(
+                status_code=409,
+                detail=f"「{title}」已生成过，请勿重复生成（如需更新内容请点击「重新生成」）",
+            )
+        # 选了分组且自己已有该题（但不在组内）→ 直接加入分组，不重复生成、不重复扣费
+        if target_group and history.user_has_record(user["id"], slug):
             history.add_to_group(user["id"], slug, target_group)
-        return {"job_id": None, "slug": slug, "reused": True}
+            return {"job_id": None, "slug": slug, "added_to_group": True}
+        # 系统内已有该题题解（共享目录或其他用户生成过）：复用内容，不重新生成
+        # （复用只是节省生成成本，用户首次获得该题仍需按标准计费）
+        if history.find_any_record(slug):
+            record_generation(user, [slug])
+            history.copy_record_to_user(slug, user["id"])
+            if target_group:
+                history.add_to_group(user["id"], slug, target_group)
+            return {"job_id": None, "slug": slug, "reused": True}
     # 全新生成：计费（普通 1 元/题，VIP 0.1 元/题；每日 200 题上限）
     record_generation(user, [slug])
 

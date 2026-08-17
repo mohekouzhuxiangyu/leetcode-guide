@@ -1018,6 +1018,16 @@ async function runGenerate(url, force) {
       refreshUserInfo(); // 刷新余额显示（复用也扣费）
       return;
     }
+    if (data.added_to_group) {
+      // 自己已有该题：直接加入所选分组，不重复生成、不重复扣费
+      const grp = ($("single-group-select") && $("single-group-select").value) || "";
+      showInputOnly();
+      toast(`✅ 该题已生成过，已直接加入分组「${grp || "未分组"}」（未重复生成、未扣费）`);
+      loadRecord(data.slug);
+      loadHistory();
+      loadGroups();
+      return;
+    }
     currentJobId = data.job_id;
     pollTimer = setInterval(pollJob, 1500);
     pollJob();
@@ -2631,8 +2641,10 @@ function init() {
 
   document.querySelectorAll(".example").forEach((el) => {
     el.addEventListener("click", () => {
+      // 只填入输入框，不自动生成：重复/分组判断等点击「生成解析」时再提示
       $("url-input").value = el.dataset.url;
-      submitGenerate(el.dataset.url);
+      $("url-input").focus();
+      toast("已填入示例链接，点击「⚡ 生成解析」开始");
     });
   });
 
